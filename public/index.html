@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ai-to-graph</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://esm.sh/three@0.160.0",
+          "3d-force-graph": "https://esm.sh/3d-force-graph@1.73.4?deps=three@0.160.0"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <header id="bar">
+      <label class="file">
+        <input id="avatar-input" type="file" accept="image/*" hidden />
+        <span>Upload avatar</span>
+      </label>
+      <button id="toggle">Start</button>
+      <span id="status">idle</span>
+    </header>
+
+    <div id="graph"></div>
+    <div id="tip" hidden></div>
+    <audio id="remote" autoplay></audio>
+
+    <script type="module" src="/js/main.js"></script>
+  </body>
+</html>
