@@ -5,23 +5,77 @@ const MODEL = 'gpt-realtime-mini';
 let pc = null;
 let dc = null;
 let micStream = null;
+let handledCallIds = new Set();
 
 const INSTRUCTIONS = `
 You are a curious, warm conversational partner. Have a natural spoken
 conversation with the user about whatever they bring up. Ask short follow-up
-questions.
+questions and keep the energy going.
 
-IMPORTANT: Whenever the user mentions a key concept, idea, person, place,
-project, interest, fact, or feeling that is worth remembering, call the
-add_concept function with a short label and a 1–2 sentence reasoning that
-explains why it matters and how it relates to the user. Do not narrate the
-function call out loud — just call it and keep the conversation flowing.
-You may call add_concept multiple times in a single turn if multiple
-distinct concepts emerged.
+CRITICAL — GRAPH TOOL USAGE:
+You have a function called add_concept. Call it AGGRESSIVELY and OFTEN.
+Every time the user mentions a noteworthy concept, idea, person, place,
+project, interest, hobby, fact, or feeling, call add_concept with:
+  - label: a short 1–4 word name for the concept
+  - reasoning: 1–2 sentences on why it matters and how it relates to the user
+
+Examples of when to call add_concept:
+  - User says "I love ramen" → call add_concept(label="Ramen", reasoning="...")
+  - User says "I'm planning a trip to Kyoto" → call add_concept(label="Kyoto", reasoning="...")
+  - User says "I work as a designer" → call add_concept(label="Design", reasoning="...")
+
+Rules:
+  - Call add_concept multiple times per turn if multiple concepts emerged.
+  - Do NOT narrate the function call ("I'm adding that to the graph…"). Just
+    call it silently and keep talking naturally.
+  - Err on the side of MORE concept nodes, not fewer.
+  - Start calling add_concept from the very first user message that mentions
+    something noteworthy.
+
+Begin by warmly greeting the user and asking what's on their mind today.
 `.trim();
+
+function sendSessionUpdate() {
+  const update = {
+    type: 'session.update',
+    session: {
+      type: 'realtime',
+      instructions: INSTRUCTIONS,
+      tools: [toolSchema],
+      tool_choice: 'auto'
+    }
+  };
+  dc.send(JSON.stringify(update));
+  console.log('[realtime] sent session.update with tools:', [toolSchema.name]);
+}
+
+async function processFunctionCall({ call_id, name, args }, onToolCall) {
+  if (handledCallIds.has(call_id)) return;
+  handledCallIds.add(call_id);
+
+  console.log('[realtime] function call:', name, args);
+
+  let result;
+  try {
+    result = await onToolCall(name, args);
+  } catch (err) {
+    result = { ok: false, error: String(err) };
+  }
+
+  dc.send(JSON.stringify({
+    type: 'conversation.item.create',
+    item: {
+      type: 'function_call_output',
+      call_id,
+      output: JSON.stringify(result)
+    }
+  }));
+  dc.send(JSON.stringify({ type: 'response.create' }));
+}
 
 export async function start({ onToolCall, onStatus }) {
   onStatus?.('connecting');
+  handledCallIds = new Set();
 
   const sessionRes = await fetch('/session', { method: 'POST' });
   if (!sessionRes.ok) {
@@ -45,46 +99,40 @@ export async function start({ onToolCall, onStatus }) {
 
   dc = pc.createDataChannel('oai-events');
 
-  dc.addEventListener('open', () => {
-    const update = {
-      type: 'session.update',
-      session: {
-        type: 'realtime',
-        instructions: INSTRUCTIONS,
-        tools: [toolSchema],
-        tool_choice: 'auto'
-      }
-    };
-    dc.send(JSON.stringify(update));
-    onStatus?.('live');
-  });
-
   dc.addEventListener('message', async ev => {
     let event;
     try { event = JSON.parse(ev.data); }
     catch { return; }
 
-    if (event.type) console.debug('[realtime]', event.type, event);
+    if (event.type) console.debug('[realtime]', event.type);
 
-    if (event.type === 'response.function_call_arguments.done') {
-      let args = {};
-      try { args = JSON.parse(event.arguments || '{}'); } catch {}
-      let result;
-      try {
-        result = await onToolCall(event.name, args);
-      } catch (err) {
-        result = { ok: false, error: String(err) };
-      }
-      dc.send(JSON.stringify({
-        type: 'conversation.item.create',
-        item: {
-          type: 'function_call_output',
-          call_id: event.call_id,
-          output: JSON.stringify(result)
+    if (event.type === 'session.created') {
+      sendSessionUpdate();
+      onStatus?.('live');
+      return;
+    }
+
+    if (event.type === 'session.updated') {
+      console.log('[realtime] session.updated — tools registered');
+      return;
+    }
+
+    if (event.type === 'response.done' && event.response?.output) {
+      for (const item of event.response.output) {
+        if (item.type === 'function_call') {
+          let args = {};
+          try { args = JSON.parse(item.arguments || '{}'); } catch {}
+          await processFunctionCall(
+            { call_id: item.call_id, name: item.name, args },
+            onToolCall
+          );
         }
-      }));
-      dc.send(JSON.stringify({ type: 'response.create' }));
-    } else if (event.type === 'error') {
+      }
+      return;
+    }
+
+    if (event.type === 'error') {
+      console.error('[realtime] error event:', event.error);
       onStatus?.('error: ' + (event.error?.message || 'unknown'));
     }
   });
@@ -119,4 +167,5 @@ export function stop() {
   dc = null;
   pc = null;
   micStream = null;
+  handledCallIds = new Set();
 }

@@ -6,19 +6,35 @@ let graph;
 let tipEl;
 let mouse = { x: 0, y: 0 };
 
-function makeAvatarSprite(dataUrl) {
+let cachedAvatarSprite = null;
+let cachedAvatarUrl = null;
+
+function buildAvatarSprite(dataUrl) {
   const loader = new THREE.TextureLoader();
   const texture = loader.load(
     dataUrl,
-    () => { if (graph) graph.refresh(); },
+    undefined,
     undefined,
     err => console.error('[graph] avatar texture load failed', err)
   );
   texture.colorSpace = THREE.SRGBColorSpace;
-  const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthWrite: false
+  });
   const sprite = new THREE.Sprite(material);
-  sprite.scale.set(24, 24, 1);
+  sprite.scale.set(28, 28, 1);
   return sprite;
+}
+
+function getAvatarSprite(dataUrl) {
+  if (cachedAvatarSprite && cachedAvatarUrl === dataUrl) {
+    return cachedAvatarSprite;
+  }
+  cachedAvatarUrl = dataUrl;
+  cachedAvatarSprite = buildAvatarSprite(dataUrl);
+  return cachedAvatarSprite;
 }
 
 export function init(container, tip) {
@@ -30,7 +46,7 @@ export function init(container, tip) {
     .nodeRelSize(6)
     .nodeThreeObjectExtend(node => node.id !== 'me')
     .nodeThreeObject(node => {
-      if (node.id === 'me') return makeAvatarSprite(node.avatar || getAvatar());
+      if (node.id === 'me') return getAvatarSprite(node.avatar || getAvatar());
       return null;
     })
     .linkColor(() => 'rgba(180,200,255,0.55)')
@@ -73,6 +89,8 @@ function positionTip() {
 }
 
 export function setAvatar(dataUrl) {
+  cachedAvatarSprite = null;
+  cachedAvatarUrl = null;
   const data = graph.graphData();
   const me = data.nodes.find(n => n.id === 'me');
   if (me) {
@@ -87,4 +105,5 @@ export function addConcept({ id, label, reasoning }) {
   data.nodes.push({ id, label });
   data.links.push({ source: 'me', target: id, reasoning });
   graph.graphData(data);
+  console.log('[graph] added concept:', label, '—', reasoning);
 }
