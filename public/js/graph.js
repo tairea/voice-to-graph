@@ -1,6 +1,7 @@
-import ForceGraph3D from '3d-force-graph';
-import * as THREE from 'three';
 import { getAvatar } from './avatar.js';
+
+const THREE = window.THREE;
+const ForceGraph3D = window.ForceGraph3D;
 
 let graph;
 let tipEl;
