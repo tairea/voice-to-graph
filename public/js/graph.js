@@ -8,16 +8,60 @@ let mouse = { x: 0, y: 0 };
 
 let cachedAvatarSprite = null;
 let cachedAvatarUrl = null;
+let lastConceptId = null;
+let fitTimer = null;
+
+const AVATAR_TEXTURE_SIZE = 256;
+
+function drawCircleMask(ctx, size) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.clip();
+}
+
+function drawFallback(ctx, size) {
+  ctx.save();
+  const grad = ctx.createRadialGradient(size / 2, size * 0.4, size * 0.1, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, '#6f86ff');
+  grad.addColorStop(1, '#1a2150');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
 
 function buildAvatarSprite(dataUrl) {
-  const loader = new THREE.TextureLoader();
-  const texture = loader.load(
-    dataUrl,
-    undefined,
-    undefined,
-    err => console.error('[graph] avatar texture load failed', err)
-  );
+  const size = AVATAR_TEXTURE_SIZE;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  drawFallback(ctx, size);
+
+  const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    ctx.clearRect(0, 0, size, size);
+    drawCircleMask(ctx, size);
+    // object-fit: cover — center-crop the largest square from the source image.
+    const srcSize = Math.min(img.width, img.height);
+    const sx = (img.width - srcSize) / 2;
+    const sy = (img.height - srcSize) / 2;
+    ctx.drawImage(img, sx, sy, srcSize, srcSize, 0, 0, size, size);
+    ctx.restore();
+    texture.needsUpdate = true;
+  };
+  img.onerror = err => console.error('[graph] avatar image load failed', err);
+  img.src = dataUrl;
+
   const material = new THREE.SpriteMaterial({
     map: texture,
     transparent: true,
@@ -37,8 +81,16 @@ function getAvatarSprite(dataUrl) {
   return cachedAvatarSprite;
 }
 
+function scheduleFit() {
+  clearTimeout(fitTimer);
+  fitTimer = setTimeout(() => {
+    try { graph.zoomToFit(600, 80); } catch (e) { console.warn('[graph] zoomToFit failed', e); }
+  }, 600);
+}
+
 export function init(container, tip) {
   tipEl = tip;
+  lastConceptId = null;
 
   graph = ForceGraph3D({ controlType: 'orbit' })(container)
     .backgroundColor('#07090f')
@@ -99,11 +151,27 @@ export function setAvatar(dataUrl) {
   }
 }
 
-export function addConcept({ id, label, reasoning }) {
+function resolveParentId(parentLabel, nodes) {
+  if (!parentLabel) return null;
+  const lower = parentLabel.toLowerCase();
+  const match = nodes.find(n =>
+    String(n.label || '').toLowerCase() === lower ||
+    String(n.id || '').toLowerCase() === lower
+  );
+  return match ? match.id : null;
+}
+
+export function addConcept({ id, label, reasoning, parentLabel }) {
   const data = graph.graphData();
   if (data.nodes.some(n => n.id === id)) return;
+
+  let parentId = resolveParentId(parentLabel, data.nodes);
+  if (!parentId) parentId = lastConceptId || 'me';
+
   data.nodes.push({ id, label });
-  data.links.push({ source: 'me', target: id, reasoning });
+  data.links.push({ source: parentId, target: id, reasoning });
   graph.graphData(data);
-  console.log('[graph] added concept:', label, '—', reasoning);
+  lastConceptId = id;
+  scheduleFit();
+  console.log(`[graph] + ${label}  (parent: ${parentId})`);
 }

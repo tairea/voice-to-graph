@@ -15,6 +15,14 @@ export const toolSchema = {
       reasoning: {
         type: 'string',
         description: 'Why this is a key concept and how it relates to the user (1–2 sentences).'
+      },
+      parent_label: {
+        type: 'string',
+        description:
+          'Optional. The label of an existing concept that this new concept logically extends. ' +
+          'Omit to chain onto the most recently mentioned concept (the usual case). ' +
+          'Pass "me" to start a fresh branch directly from the user when they pivot to an ' +
+          'unrelated topic. Pass an earlier concept\'s exact label when the user returns to it.'
       }
     },
     required: ['label', 'reasoning']
@@ -31,7 +39,8 @@ export async function handleToolCall(name, args, graph) {
     const id = uuid();
     const label = String(args.label || '').trim() || 'concept';
     const reasoning = String(args.reasoning || '').trim();
-    graph.addConcept({ id, label, reasoning });
+    const parentLabel = args.parent_label ? String(args.parent_label).trim() : null;
+    graph.addConcept({ id, label, reasoning, parentLabel });
     return { ok: true, id };
   }
   return { ok: false, error: `unknown tool: ${name}` };
