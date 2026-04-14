@@ -1,34 +1,36 @@
+import ForceGraph3D from '3d-force-graph';
+import * as THREE from 'three';
 import { getAvatar } from './avatar.js';
-
-const THREE = window.THREE;
-const ForceGraph3D = window.ForceGraph3D;
 
 let graph;
 let tipEl;
-let containerEl;
 let mouse = { x: 0, y: 0 };
 
-function makeAvatarMesh(dataUrl) {
-  const texture = new THREE.TextureLoader().load(dataUrl);
+function makeAvatarSprite(dataUrl) {
+  const loader = new THREE.TextureLoader();
+  const texture = loader.load(
+    dataUrl,
+    () => { if (graph) graph.refresh(); },
+    undefined,
+    err => console.error('[graph] avatar texture load failed', err)
+  );
   texture.colorSpace = THREE.SRGBColorSpace;
-  const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
-  const geometry = new THREE.CircleGeometry(10, 48);
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.userData.isAvatar = true;
-  return mesh;
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(24, 24, 1);
+  return sprite;
 }
 
 export function init(container, tip) {
-  containerEl = container;
   tipEl = tip;
 
-  graph = new ForceGraph3D(container, { controlType: 'orbit' })
+  graph = ForceGraph3D({ controlType: 'orbit' })(container)
     .backgroundColor('#07090f')
     .nodeLabel(n => n.label || '')
     .nodeRelSize(6)
     .nodeThreeObjectExtend(node => node.id !== 'me')
     .nodeThreeObject(node => {
-      if (node.id === 'me') return makeAvatarMesh(node.avatar || getAvatar());
+      if (node.id === 'me') return makeAvatarSprite(node.avatar || getAvatar());
       return null;
     })
     .linkColor(() => 'rgba(180,200,255,0.55)')
@@ -56,12 +58,12 @@ export function init(container, tip) {
     if (!tipEl.hidden) positionTip();
   });
 
-  window.addEventListener('resize', () => {
+  const resize = () => {
     graph.width(container.clientWidth);
     graph.height(container.clientHeight);
-  });
-  graph.width(container.clientWidth);
-  graph.height(container.clientHeight);
+  };
+  window.addEventListener('resize', resize);
+  resize();
 }
 
 function positionTip() {
