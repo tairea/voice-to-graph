@@ -9,8 +9,16 @@ const avatarInput = document.getElementById('avatar-input');
 const avatarEdit = document.getElementById('avatar-edit');
 const graphEl = document.getElementById('graph');
 const tipEl = document.getElementById('tip');
+const infoBtn = document.getElementById('info-btn');
+const infoPanel = document.getElementById('info-panel');
 
 let live = false;
+
+infoBtn.addEventListener('click', () => {
+  const open = !infoPanel.hidden;
+  infoPanel.hidden = open;
+  infoBtn.setAttribute('aria-expanded', !open);
+});
 
 function setStatus(s) {
   statusEl.textContent = s;
