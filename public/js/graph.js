@@ -2,6 +2,8 @@ import ForceGraph3D from '3d-force-graph';
 import * as THREE from 'three';
 import { getAvatar } from './avatar.js';
 
+const fontReady = document.fonts.ready;
+
 let graph;
 let tipEl;
 let mouse = { x: 0, y: 0 };
@@ -12,19 +14,71 @@ let lastConceptId = null;
 let fitTimer = null;
 let branchCounters = {};
 let nextBranchCharCode = 65;
+let meHoverCb = null;
 
 const AVATAR_TEXTURE_SIZE = 256;
 const AVATAR_SPRITE_SIZE = 28;
 const CONCEPT_NODE_RADIUS = 4;
 
-function drawFallback(ctx, size) {
-  const grad = ctx.createRadialGradient(size / 2, size * 0.4, size * 0.1, size / 2, size / 2, size / 2);
-  grad.addColorStop(0, '#6f86ff');
-  grad.addColorStop(1, '#1a2150');
-  ctx.fillStyle = grad;
+function drawFallbackAvatar(ctx, size) {
+  const cx = size / 2;
+
+  // dark circle background with subtle radial gradient
+  const bg = ctx.createRadialGradient(cx, cx, 0, cx, cx, cx);
+  bg.addColorStop(0, '#141e35');
+  bg.addColorStop(1, '#0a0f1c');
   ctx.beginPath();
-  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  ctx.arc(cx, cx, cx, 0, Math.PI * 2);
+  ctx.fillStyle = bg;
   ctx.fill();
+
+  // outer ring — thin glowing border
+  ctx.beginPath();
+  ctx.arc(cx, cx, cx - 2, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(80,140,255,0.2)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // clip everything inside the circle
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cx, cx - 2, 0, Math.PI * 2);
+  ctx.clip();
+
+  // head — soft glowing circle
+  const headR = size * 0.14;
+  const headY = size * 0.35;
+  const headGlow = ctx.createRadialGradient(cx, headY, 0, cx, headY, headR * 1.6);
+  headGlow.addColorStop(0, 'rgba(100,160,255,0.12)');
+  headGlow.addColorStop(1, 'transparent');
+  ctx.fillStyle = headGlow;
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.beginPath();
+  ctx.arc(cx, headY, headR, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(120,170,255,0.35)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(120,170,255,0.45)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // body — shoulders/torso arc
+  const bodyTop = size * 0.56;
+  const bodyGlow = ctx.createRadialGradient(cx, bodyTop + size * 0.12, 0, cx, bodyTop + size * 0.12, size * 0.35);
+  bodyGlow.addColorStop(0, 'rgba(100,160,255,0.1)');
+  bodyGlow.addColorStop(1, 'transparent');
+  ctx.fillStyle = bodyGlow;
+  ctx.fillRect(0, bodyTop - 20, size, size);
+
+  ctx.beginPath();
+  ctx.ellipse(cx, bodyTop + size * 0.2, size * 0.3, size * 0.26, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(120,170,255,0.25)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(120,170,255,0.35)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.restore();
 }
 
 function getAvatarTexture(dataUrl) {
@@ -36,30 +90,34 @@ function getAvatarTexture(dataUrl) {
   canvas.height = size;
   const ctx = canvas.getContext('2d');
 
-  drawFallback(ctx, size);
+  // draw fallback immediately so there's never a blank frame
+  drawFallbackAvatar(ctx, size);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 8;
 
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  img.onload = () => {
-    ctx.clearRect(0, 0, size, size);
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.clip();
-    const srcSize = Math.min(img.width, img.height);
-    const sx = (img.width - srcSize) / 2;
-    const sy = (img.height - srcSize) / 2;
-    ctx.drawImage(img, sx, sy, srcSize, srcSize, 0, 0, size, size);
-    ctx.restore();
-    texture.needsUpdate = true;
-  };
-  img.onerror = err => console.error('[graph] avatar image load failed', err);
-  img.src = dataUrl;
+  // if dataUrl is a real image (data: or uploaded), overlay it
+  if (dataUrl && !dataUrl.endsWith('.png')) {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      ctx.clearRect(0, 0, size, size);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+      const srcSize = Math.min(img.width, img.height);
+      const sx = (img.width - srcSize) / 2;
+      const sy = (img.height - srcSize) / 2;
+      ctx.drawImage(img, sx, sy, srcSize, srcSize, 0, 0, size, size);
+      ctx.restore();
+      texture.needsUpdate = true;
+    };
+    img.onerror = () => {}; // fallback already drawn
+    img.src = dataUrl;
+  }
 
   cachedAvatarUrl = dataUrl;
   cachedAvatarTexture = texture;
@@ -71,7 +129,7 @@ function makeTextSprite(text) {
   const fontSize = 44;
   const measureCanvas = document.createElement('canvas');
   const mctx = measureCanvas.getContext('2d');
-  mctx.font = `600 ${fontSize}px -apple-system, system-ui, sans-serif`;
+  mctx.font = `300 ${fontSize}px 'Sora', system-ui, sans-serif`;
   const textWidth = Math.ceil(mctx.measureText(text).width);
 
   const w = textWidth + pad * 2;
@@ -81,8 +139,7 @@ function makeTextSprite(text) {
   canvas.height = h;
   const ctx = canvas.getContext('2d');
 
-  ctx.fillStyle = 'rgba(8,12,24,0.72)';
-  const r = 10;
+  const r = 12;
   ctx.beginPath();
   ctx.moveTo(r, 0);
   ctx.lineTo(w - r, 0);
@@ -94,10 +151,14 @@ function makeTextSprite(text) {
   ctx.lineTo(0, r);
   ctx.quadraticCurveTo(0, 0, r, 0);
   ctx.closePath();
+  ctx.fillStyle = 'rgba(8,14,28,0.6)';
   ctx.fill();
+  ctx.strokeStyle = 'rgba(100,150,255,0.12)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
 
-  ctx.font = `600 ${fontSize}px -apple-system, system-ui, sans-serif`;
-  ctx.fillStyle = '#f0f4ff';
+  ctx.font = `300 ${fontSize}px 'Sora', system-ui, sans-serif`;
+  ctx.fillStyle = 'rgba(200,215,240,0.9)';
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'center';
   ctx.fillText(text, w / 2, h / 2);
@@ -210,6 +271,16 @@ export function init(container, tip) {
       } else {
         tipEl.hidden = true;
       }
+    })
+    .onNodeHover(node => {
+      if (meHoverCb) {
+        if (node && node.id === 'me') {
+          const coords = graph.graph2ScreenCoords(node.x, node.y, node.z);
+          meHoverCb({ x: coords.x, y: coords.y });
+        } else {
+          meHoverCb(null);
+        }
+      }
     });
 
   graph.d3Force('charge').strength(-220);
@@ -218,6 +289,12 @@ export function init(container, tip) {
   graph.graphData({
     nodes: [{ id: 'me', label: 'me', avatar: getAvatar() }],
     links: []
+  });
+
+  graph.cameraPosition({ x: 0, y: 0, z: 250 });
+
+  fontReady.then(() => {
+    graph.nodeThreeObject(graph.nodeThreeObject());
   });
 
   container.addEventListener('mousemove', e => {
@@ -310,6 +387,10 @@ export function removeNode(ref) {
   scheduleFit();
   console.log(`[graph] - removed ${node.code} and ${doomed.size - 1} descendants`);
   return true;
+}
+
+export function onMeHover(cb) {
+  meHoverCb = cb;
 }
 
 export function moveNode(ref, newParentRef) {

@@ -10,6 +10,12 @@ You are a curious, warm conversational partner. Have a natural spoken
 conversation with the user about whatever they bring up. Ask short,
 genuine follow-up questions and keep the energy going. Begin by warmly
 greeting the user and asking what's on their mind today.
+
+The user is building a knowledge graph as you talk. They may give graph
+commands like "move B1 to A2", "delete A4", "remove C3", "add X to Y",
+or similar. These are handled by a separate system — you do NOT need to
+act on them. Just briefly acknowledge (e.g. "Done", "Got it", "On it")
+and continue the conversation naturally. Do not ask what the codes mean.
 `.trim();
 
 function sendSessionUpdate() {
@@ -32,7 +38,7 @@ function sendSessionUpdate() {
 export async function start({ onTranscript, onStatus }) {
   onStatus?.('connecting');
 
-  const sessionRes = await fetch('/session', { method: 'POST' });
+  const sessionRes = await fetch('session', { method: 'POST' });
   if (!sessionRes.ok) {
     const text = await sessionRes.text();
     throw new Error(`/session failed: ${sessionRes.status} ${text}`);
