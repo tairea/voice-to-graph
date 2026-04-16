@@ -18,7 +18,7 @@ const AVATAR_SPRITE_SIZE = 28;
 const CONCEPT_NODE_RADIUS = 4;
 
 function drawFallback(ctx, size) {
-  const grad = ctx.createRadialGradient(size / 2, size * 0.4, size * 0.1, size / 2, size / 2, size / 2);
+  const grad = ctx.createRadialGradient(size / 2, size / 2, size * 0.1, size / 2, size / 2, size / 2);
   grad.addColorStop(0, '#6f86ff');
   grad.addColorStop(1, '#1a2150');
   ctx.fillStyle = grad;
@@ -219,6 +219,8 @@ export function init(container, tip) {
     nodes: [{ id: 'me', label: 'me', avatar: getAvatar() }],
     links: []
   });
+
+  graph.cameraPosition({ x: 0, y: 0, z: 80 });
 
   container.addEventListener('mousemove', e => {
     mouse.x = e.clientX;
