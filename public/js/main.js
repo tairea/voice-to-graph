@@ -3,8 +3,10 @@ import * as realtime from './realtime.js';
 import { setAvatarFromFile } from './avatar.js';
 
 const statusEl = document.getElementById('status');
-const toggleBtn = document.getElementById('toggle');
+const statusPill = document.getElementById('status-pill');
+const micBtn = document.getElementById('mic-btn');
 const avatarInput = document.getElementById('avatar-input');
+const avatarEdit = document.getElementById('avatar-edit');
 const graphEl = document.getElementById('graph');
 const tipEl = document.getElementById('tip');
 
@@ -12,9 +14,26 @@ let live = false;
 
 function setStatus(s) {
   statusEl.textContent = s;
+  micBtn.dataset.state = s;
+
+  const isLive = s === 'connected' || s === 'listening';
+  statusPill.dataset.live = isLive;
 }
 
 graph.init(graphEl, tipEl);
+
+// avatar edit: show pencil on "me" hover, click to open file picker
+graph.onMeHover((screenPos) => {
+  if (screenPos) {
+    avatarEdit.hidden = false;
+    avatarEdit.style.left = (screenPos.x + 14) + 'px';
+    avatarEdit.style.top = (screenPos.y - 14) + 'px';
+  } else {
+    avatarEdit.hidden = true;
+  }
+});
+
+avatarEdit.addEventListener('click', () => avatarInput.click());
 
 window.addEventListener('avatar-changed', e => {
   graph.setAvatar(e.detail);
@@ -26,7 +45,7 @@ avatarInput.addEventListener('change', async () => {
   try {
     await setAvatarFromFile(file);
   } catch (err) {
-    setStatus('avatar error: ' + err.message);
+    setStatus('error');
   }
 });
 
@@ -68,30 +87,28 @@ async function handleTranscript({ transcript, assistantPrior }) {
   }
 }
 
-toggleBtn.addEventListener('click', async () => {
+micBtn.addEventListener('click', async () => {
   if (live) {
     realtime.stop();
     live = false;
-    toggleBtn.textContent = 'Start';
-    toggleBtn.dataset.live = 'false';
-    setStatus('idle');
+    micBtn.dataset.live = 'false';
+    setStatus('ready');
     return;
   }
 
-  toggleBtn.disabled = true;
+  micBtn.disabled = true;
   try {
     await realtime.start({
       onTranscript: handleTranscript,
       onStatus: setStatus
     });
     live = true;
-    toggleBtn.textContent = 'Stop';
-    toggleBtn.dataset.live = 'true';
+    micBtn.dataset.live = 'true';
   } catch (err) {
     console.error(err);
-    setStatus('error: ' + err.message);
+    setStatus('error');
     realtime.stop();
   } finally {
-    toggleBtn.disabled = false;
+    micBtn.disabled = false;
   }
 });

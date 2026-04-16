@@ -3,7 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ai-to-graph</title>
+    <title>voice-to-graph</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="style.css" />
     <script type="importmap">
       {
@@ -16,18 +19,42 @@
     </script>
   </head>
   <body>
-    <header id="bar">
-      <label class="file">
-        <input id="avatar-input" type="file" accept="image/*" hidden />
-        <span>Upload avatar</span>
-      </label>
-      <button id="toggle">Start</button>
-      <span id="status">idle</span>
-    </header>
-
     <div id="graph"></div>
     <div id="tip" hidden></div>
     <audio id="remote" autoplay></audio>
+
+    <input id="avatar-input" type="file" accept="image/*" hidden />
+
+    <!-- pencil overlay for avatar edit -->
+    <div id="avatar-edit" hidden>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+        <path d="m15 5 4 4"/>
+      </svg>
+    </div>
+
+    <!-- bottom controls -->
+    <div id="controls">
+      <div id="status-pill">
+        <span id="status-dot"></span>
+        <span id="status">ready</span>
+      </div>
+      <button id="mic-btn" aria-label="Toggle microphone">
+        <div class="mic-rings">
+          <span class="ring ring-1"></span>
+          <span class="ring ring-2"></span>
+          <span class="ring ring-3"></span>
+        </div>
+        <svg class="mic-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 1a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V5a4 4 0 0 0-4-4Z"/>
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <svg class="stop-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+          <rect x="4" y="4" width="16" height="16" rx="3"/>
+        </svg>
+      </button>
+    </div>
 
     <script type="module" src="js/main.js"></script>
   </body>
