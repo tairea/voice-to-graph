@@ -56,6 +56,30 @@
       </button>
     </div>
 
+    <!-- info -->
+    <button id="info-btn" aria-label="How it works">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="16" x2="12" y2="12"/>
+        <line x1="12" y1="8" x2="12.01" y2="8"/>
+      </svg>
+    </button>
+    <div id="info-panel" hidden>
+      <p><strong>How it works</strong></p>
+      <p>Speak naturally — your words are transcribed and processed into a knowledge graph in real time. Concepts are extracted and linked automatically.</p>
+      <p><strong>Voice commands</strong></p>
+      <ul>
+        <li><em>"Move B1 to A2"</em> — re-parent a node</li>
+        <li><em>"Delete A4"</em> / <em>"Remove C3"</em> — remove a node and its children</li>
+      </ul>
+      <p><strong>Controls</strong></p>
+      <ul>
+        <li>Click the mic to start/stop</li>
+        <li>Hover the avatar, click the pencil to upload a photo</li>
+        <li>Drag to orbit, scroll to zoom, hover links for context</li>
+      </ul>
+    </div>
+
     <script type="module" src="js/main.js"></script>
   </body>
 </html>
