@@ -32,7 +32,7 @@ function sendSessionUpdate() {
 export async function start({ onTranscript, onStatus }) {
   onStatus?.('connecting');
 
-  const sessionRes = await fetch('/session', { method: 'POST' });
+  const sessionRes = await fetch('session', { method: 'POST' });
   if (!sessionRes.ok) {
     const text = await sessionRes.text();
     throw new Error(`/session failed: ${sessionRes.status} ${text}`);

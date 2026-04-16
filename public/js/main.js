@@ -37,7 +37,7 @@ function uuid() {
 
 async function handleTranscript({ transcript, assistantPrior }) {
   try {
-    const res = await fetch('/extract', {
+    const res = await fetch('extract', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ transcript, assistantPrior, nodes: graph.getNodeLabels() })
