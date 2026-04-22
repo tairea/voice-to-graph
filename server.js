@@ -197,6 +197,10 @@ app.post('/extract', async (req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`PHAROS voice-to-graph listening on http://localhost:${port}`);
+
+// Wait for GUN to bootstrap from persisted data before accepting requests
+store.awaitBootstrap().then(() => {
+  app.listen(port, () => {
+    console.log(`PHAROS voice-to-graph listening on http://localhost:${port}`);
+  });
 });

@@ -1,5 +1,23 @@
-// In-memory PHAROS node/claim/context store.
+// In-memory PHAROS node/claim/context store with GUN file persistence.
 // Server-side source of truth for identity resolution.
+
+import Gun from 'gun';
+import 'gun/sea';
+
+// ─── GUN setup ───────────────────────────────────────────────────────────────
+
+// Local file persistence — no relay server needed for single-user.
+const gun = Gun({
+  file: 'pharos-data.json',
+  radisk: true,
+  localStorage: false
+});
+
+const gunNodes = gun.get('pharos').get('nodes');
+const gunClaims = gun.get('pharos').get('claims');
+const gunContexts = gun.get('pharos').get('contexts');
+
+// ─── In-memory store (source of truth during runtime) ───────────────────────
 
 const nodes = new Map();   // id → node object
 const claims = [];          // all claims
@@ -8,6 +26,61 @@ const codeMap = new Map();  // pharos-id → display code (e.g. "A1")
 
 let nextBranchCharCode = 65;
 const branchCounters = {};
+
+// ─── Bootstrap: load persisted data from GUN into memory ──────────────────────
+
+let bootstrapped = false;
+const bootstrapPromises = [];
+
+export function awaitBootstrap() {
+  return Promise.all(bootstrapPromises);
+}
+
+function bootstrap() {
+  return new Promise((resolve) => {
+    let nodesLoaded = false;
+    let claimsLoaded = false;
+    let contextsLoaded = false;
+
+    function checkDone() {
+      if (nodesLoaded && claimsLoaded && contextsLoaded) {
+        bootstrapped = true;
+        console.log(`[pharos-store] bootstrapped from GUN — ${nodes.size} nodes, ${claims.length} claims, ${contexts.size} contexts`);
+        resolve();
+      }
+    }
+
+    gunNodes.map().on((nodeData, nodeId) => {
+      if (!nodeData || typeof nodeData !== 'object') return;
+      if (nodes.has(nodeId)) return; // already in memory, skip (latest write wins)
+      nodes.set(nodeId, { ...nodeData, expressionCount: nodeData.expressionCount || 0 });
+    });
+
+    gunClaims.map().on((claimData, claimId) => {
+      if (!claimData || typeof claimData !== 'object') return;
+      if (claims.find(c => c.id === claimId)) return;
+      claims.push({ ...claimData, created: claimData.created || new Date().toISOString() });
+    });
+
+    gunContexts.map().on((ctxData, ctxId) => {
+      if (!ctxData || typeof ctxData !== 'object') return;
+      if (contexts.has(ctxId)) return;
+      contexts.set(ctxId, ctxData);
+    });
+
+    // Give GUN a moment to load from file, then resolve
+    setTimeout(() => {
+      nodesLoaded = true;
+      claimsLoaded = true;
+      contextsLoaded = true;
+      checkDone();
+    }, 500);
+  });
+}
+
+bootstrapPromises.push(bootstrap());
+
+// ─── Branch code management ────────────────────────────────────────────────────
 
 export function allocBranch() {
   const letter = String.fromCharCode(nextBranchCharCode++);
@@ -21,9 +94,14 @@ export function nextCodeInBranch(branch) {
   return `${branch}${branchCounters[branch]}`;
 }
 
+// ─── Node operations ───────────────────────────────────────────────────────────
+
 export function addNode(node) {
   if (nodes.has(node.id)) return nodes.get(node.id);
-  nodes.set(node.id, { ...node, expressionCount: 0, created: new Date().toISOString() });
+  const enriched = { ...node, expressionCount: 0, created: new Date().toISOString() };
+  nodes.set(node.id, enriched);
+  // Persist to GUN
+  gunNodes.get(node.id).put(enriched);
   return nodes.get(node.id);
 }
 
@@ -38,20 +116,32 @@ export function getAllNodes() {
 export function updateNode(id, patch) {
   const node = nodes.get(id);
   if (!node) return null;
-  Object.assign(node, patch, { updated: new Date().toISOString() });
-  return node;
+  const updated = { ...node, ...patch, updated: new Date().toISOString() };
+  nodes.set(id, updated);
+  // Persist to GUN
+  gunNodes.get(id).put(updated);
+  return updated;
 }
 
 export function incrementExpression(nodeId) {
   const node = nodes.get(nodeId);
-  if (node) node.expressionCount = (node.expressionCount || 0) + 1;
+  if (node) {
+    node.expressionCount = (node.expressionCount || 0) + 1;
+    // Persist updated expression count to GUN
+    gunNodes.get(nodeId).put({ ...node });
+  }
 }
+
+// ─── Claim operations ─────────────────────────────────────────────────────────
 
 export function addClaim(claim) {
   const existing = claims.find(c => c.id === claim.id);
   if (existing) return existing;
-  claims.push({ ...claim, created: new Date().toISOString() });
-  return claims[claims.length - 1];
+  const enriched = { ...claim, created: new Date().toISOString() };
+  claims.push(enriched);
+  // Persist to GUN
+  gunClaims.get(claim.id).put(enriched);
+  return enriched;
 }
 
 export function getClaimsForNode(nodeId) {
@@ -62,14 +152,20 @@ export function getAllClaims() {
   return [...claims];
 }
 
+// ─── Context operations ───────────────────────────────────────────────────────
+
 export function addContext(ctx) {
   contexts.set(ctx.id, ctx);
+  // Persist to GUN
+  gunContexts.get(ctx.id).put(ctx);
   return ctx;
 }
 
 export function getContext(id) {
   return contexts.get(id) || null;
 }
+
+// ─── Code management ──────────────────────────────────────────────────────────
 
 export function assignCode(nodeId, parentId) {
   if (codeMap.has(nodeId)) return codeMap.get(nodeId);
@@ -119,3 +215,7 @@ export function getStoreSummary() {
     confidence: n.confidence
   }));
 }
+
+// ─── Debug ────────────────────────────────────────────────────────────────────
+
+export function getGun() { return gun; }
