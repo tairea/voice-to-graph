@@ -1,5 +1,4 @@
 const KEY = 'avatar';
-
 const FALLBACK = 'img/placeholder.png';
 
 export function getAvatar() {

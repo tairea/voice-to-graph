@@ -23,14 +23,12 @@ infoBtn.addEventListener('click', () => {
 function setStatus(s) {
   statusEl.textContent = s;
   micBtn.dataset.state = s;
-
-  const isLive = s === 'connected' || s === 'listening';
+  const isLive = s === 'connected' || s === 'listening' || s === 'live';
   statusPill.dataset.live = isLive;
 }
 
 graph.init(graphEl, tipEl);
 
-// avatar edit: show pencil on "me" hover, click to open file picker
 graph.onMeHover((screenPos) => {
   if (screenPos) {
     avatarEdit.hidden = false;
@@ -52,46 +50,54 @@ avatarInput.addEventListener('change', async () => {
   if (!file) return;
   try {
     await setAvatarFromFile(file);
-  } catch (err) {
+  } catch {
     setStatus('error');
   }
 });
 
-function uuid() {
-  if (crypto && crypto.randomUUID) return crypto.randomUUID();
-  return 'c_' + Math.random().toString(36).slice(2, 10);
-}
-
 async function handleTranscript({ transcript, assistantPrior }) {
   try {
-    const res = await fetch('extract', {
+    const res = await fetch('ingest', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transcript, assistantPrior, nodes: graph.getNodeLabels() })
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': getSessionId()
+      },
+      body: JSON.stringify({ transcript, assistantPrior })
     });
+
     if (!res.ok) {
-      console.error('[extract] failed', res.status, await res.text());
+      console.error('[ingest] failed', res.status, await res.text());
       return;
     }
-    const { operations, concepts } = await res.json();
+
+    const { results, operations } = await res.json();
+
+    // Apply operations first (move/remove)
     if (Array.isArray(operations)) {
       for (const op of operations) {
-        if (op.type === 'remove') graph.removeNode(op.target);
-        else if (op.type === 'move') graph.moveNode(op.target, op.new_parent || 'me');
+        if (op.type === 'remove') {
+          graph.removeNode(op.target_id || op.target_code);
+        } else if (op.type === 'move') {
+          graph.moveNode(op.target_id || op.target_code, op.new_parent_id || op.new_parent_code || 'me');
+        }
       }
     }
-    if (Array.isArray(concepts)) {
-      for (const c of concepts) {
-        graph.addConcept({
-          id: uuid(),
-          label: c.label,
-          reasoning: c.reasoning,
-          parentLabel: c.parent_label
-        });
+
+    // Apply identity resolution results
+    if (Array.isArray(results)) {
+      for (const r of results) {
+        if (r.outcome === 'new' && r.node) {
+          graph.addPharosNode({ node: r.node, parentId: r.parentId || r.node.parent_id || 'me' });
+        } else if ((r.outcome === 'related' || r.outcome === 'conflicting') && r.claim) {
+          graph.addPharosClaim(r.claim);
+        } else if (r.outcome === 'same' && r.expression) {
+          graph.incrementExpression(r.expression.source_node);
+        }
       }
     }
   } catch (err) {
-    console.error('[extract] error', err);
+    console.error('[ingest] error', err);
   }
 }
 
@@ -106,10 +112,7 @@ micBtn.addEventListener('click', async () => {
 
   micBtn.disabled = true;
   try {
-    await realtime.start({
-      onTranscript: handleTranscript,
-      onStatus: setStatus
-    });
+    await realtime.start({ onTranscript: handleTranscript, onStatus: setStatus });
     live = true;
     micBtn.dataset.live = 'true';
   } catch (err) {
@@ -120,3 +123,10 @@ micBtn.addEventListener('click', async () => {
     micBtn.disabled = false;
   }
 });
+
+function getSessionId() {
+  if (!sessionStorage.pharosSessionId) {
+    sessionStorage.pharosSessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+  }
+  return sessionStorage.pharosSessionId;
+}
