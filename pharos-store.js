@@ -1,21 +1,12 @@
-// In-memory PHAROS node/claim/context store with GUN file persistence.
+// In-memory PHAROS node/claim/context store with synchronous JSON file persistence.
 // Server-side source of truth for identity resolution.
 
-import Gun from 'gun';
-import 'gun/sea';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-// ─── GUN setup ───────────────────────────────────────────────────────────────
-
-// Local file persistence — no relay server needed for single-user.
-const gun = Gun({
-  file: 'pharos-data.json',
-  radisk: true,
-  localStorage: false
-});
-
-const gunNodes = gun.get('pharos').get('nodes');
-const gunClaims = gun.get('pharos').get('claims');
-const gunContexts = gun.get('pharos').get('contexts');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DATA_FILE = path.join(__dirname, 'pharos-data.json');
 
 // ─── In-memory store (source of truth during runtime) ───────────────────────
 
@@ -27,60 +18,63 @@ const codeMap = new Map();  // pharos-id → display code (e.g. "A1")
 let nextBranchCharCode = 65;
 const branchCounters = {};
 
-// ─── Bootstrap: load persisted data from GUN into memory ──────────────────────
+// ─── Persistence ─────────────────────────────────────────────────────────────
 
-let bootstrapped = false;
-const bootstrapPromises = [];
+function persist() {
+  const state = {
+    nodes: Object.fromEntries(nodes),
+    claims,
+    contexts: Object.fromEntries(contexts),
+    codeMap: Object.fromEntries(codeMap),
+    branchCounters,
+    nextBranchCharCode
+  };
+  fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), 'utf-8');
+}
+
+function rehydrate() {
+  try {
+    if (!fs.existsSync(DATA_FILE)) return;
+    const raw = fs.readFileSync(DATA_FILE, 'utf-8');
+    const state = JSON.parse(raw);
+    if (state.nodes) {
+      for (const [id, node] of Object.entries(state.nodes)) {
+        nodes.set(id, node);
+      }
+    }
+    if (state.claims) {
+      claims.push(...state.claims);
+    }
+    if (state.contexts) {
+      for (const [id, ctx] of Object.entries(state.contexts)) {
+        contexts.set(id, ctx);
+      }
+    }
+    if (state.codeMap) {
+      for (const [id, code] of Object.entries(state.codeMap)) {
+        codeMap.set(id, code);
+      }
+    }
+    if (state.branchCounters) Object.assign(branchCounters, state.branchCounters);
+    if (state.nextBranchCharCode) nextBranchCharCode = state.nextBranchCharCode;
+    console.log(`[pharos-store] rehydrated — ${nodes.size} nodes, ${claims.length} claims, ${contexts.size} contexts`);
+  } catch (err) {
+    console.error('[pharos-store] rehydrate error:', err);
+  }
+}
+
+rehydrate();
+
+// ─── Bootstrap promise (resolved immediately since rehydrate is sync) ─────────
+
+let bootstrapped = true;
+const bootstrapPromises = [Promise.resolve()];
 
 export function awaitBootstrap() {
   return Promise.all(bootstrapPromises);
 }
 
-function bootstrap() {
-  return new Promise((resolve) => {
-    let nodesLoaded = false;
-    let claimsLoaded = false;
-    let contextsLoaded = false;
-
-    function checkDone() {
-      if (nodesLoaded && claimsLoaded && contextsLoaded) {
-        bootstrapped = true;
-        console.log(`[pharos-store] bootstrapped from GUN — ${nodes.size} nodes, ${claims.length} claims, ${contexts.size} contexts`);
-        resolve();
-      }
-    }
-
-    gunNodes.map().on((nodeData, nodeId) => {
-      if (!nodeData || typeof nodeData !== 'object') return;
-      if (nodes.has(nodeId)) return; // already in memory, skip (latest write wins)
-      nodes.set(nodeId, { ...nodeData, expressionCount: nodeData.expressionCount || 0 });
-    });
-
-    gunClaims.map().on((claimData, claimId) => {
-      if (!claimData || typeof claimData !== 'object') return;
-      if (claims.find(c => c.id === claimId)) return;
-      claims.push({ ...claimData, created: claimData.created || new Date().toISOString() });
-    });
-
-    gunContexts.map().on((ctxData, ctxId) => {
-      if (!ctxData || typeof ctxData !== 'object') return;
-      if (contexts.has(ctxId)) return;
-      contexts.set(ctxId, ctxData);
-    });
-
-    // Give GUN a moment to load from file, then resolve
-    setTimeout(() => {
-      nodesLoaded = true;
-      claimsLoaded = true;
-      contextsLoaded = true;
-      checkDone();
-    }, 500);
-  });
-}
-
-bootstrapPromises.push(bootstrap());
-
-// ─── Branch code management ────────────────────────────────────────────────────
+// ─── Branch code management ───────────────────────────────────────────────────
 
 export function allocBranch() {
   const letter = String.fromCharCode(nextBranchCharCode++);
@@ -94,14 +88,13 @@ export function nextCodeInBranch(branch) {
   return `${branch}${branchCounters[branch]}`;
 }
 
-// ─── Node operations ───────────────────────────────────────────────────────────
+// ─── Node operations ─────────────────────────────────────────────────────────
 
 export function addNode(node) {
   if (nodes.has(node.id)) return nodes.get(node.id);
   const enriched = { ...node, expressionCount: 0, created: new Date().toISOString() };
   nodes.set(node.id, enriched);
-  // Persist to GUN
-  gunNodes.get(node.id).put(enriched);
+  persist();
   return nodes.get(node.id);
 }
 
@@ -118,8 +111,7 @@ export function updateNode(id, patch) {
   if (!node) return null;
   const updated = { ...node, ...patch, updated: new Date().toISOString() };
   nodes.set(id, updated);
-  // Persist to GUN
-  gunNodes.get(id).put(updated);
+  persist();
   return updated;
 }
 
@@ -127,20 +119,18 @@ export function incrementExpression(nodeId) {
   const node = nodes.get(nodeId);
   if (node) {
     node.expressionCount = (node.expressionCount || 0) + 1;
-    // Persist updated expression count to GUN
-    gunNodes.get(nodeId).put({ ...node });
+    persist();
   }
 }
 
-// ─── Claim operations ─────────────────────────────────────────────────────────
+// ─── Claim operations ────────────────────────────────────────────────────────
 
 export function addClaim(claim) {
   const existing = claims.find(c => c.id === claim.id);
   if (existing) return existing;
   const enriched = { ...claim, created: new Date().toISOString() };
   claims.push(enriched);
-  // Persist to GUN
-  gunClaims.get(claim.id).put(enriched);
+  persist();
   return enriched;
 }
 
@@ -152,12 +142,11 @@ export function getAllClaims() {
   return [...claims];
 }
 
-// ─── Context operations ───────────────────────────────────────────────────────
+// ─── Context operations ──────────────────────────────────────────────────────
 
 export function addContext(ctx) {
   contexts.set(ctx.id, ctx);
-  // Persist to GUN
-  gunContexts.get(ctx.id).put(ctx);
+  persist();
   return ctx;
 }
 
@@ -165,7 +154,7 @@ export function getContext(id) {
   return contexts.get(id) || null;
 }
 
-// ─── Code management ──────────────────────────────────────────────────────────
+// ─── Code management ─────────────────────────────────────────────────────────
 
 export function assignCode(nodeId, parentId) {
   if (codeMap.has(nodeId)) return codeMap.get(nodeId);
@@ -215,7 +204,3 @@ export function getStoreSummary() {
     confidence: n.confidence
   }));
 }
-
-// ─── Debug ────────────────────────────────────────────────────────────────────
-
-export function getGun() { return gun; }
