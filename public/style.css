@@ -449,23 +449,23 @@ html, body {
 /* === drop zone === */
 #drop-zone {
   position: fixed;
-  bottom: 20px;
+  bottom: 110px;
   left: 20px;
   z-index: 20;
-  width: 80px;
-  height: 80px;
-  border-radius: 12px;
-  border: 1.5px dashed rgba(120, 160, 255, 0.25);
+  width: 160px;
+  height: 160px;
+  border-radius: 16px;
+  border: 2px dashed rgba(120, 160, 255, 0.25);
   background: rgba(10, 16, 30, 0.4);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 8px;
   color: rgba(140, 170, 220, 0.4);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 400;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   cursor: pointer;
   transition: all 0.25s ease;
   outline: none;
@@ -475,6 +475,11 @@ html, body {
 #drop-zone .drop-icon {
   opacity: 0.5;
   transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+#drop-zone .drop-text {
+  font-size: 10px;
+  opacity: 0.6;
 }
 
 #drop-zone:hover,
@@ -495,7 +500,7 @@ html, body {
   background: rgba(40, 70, 140, 0.3);
   color: rgba(180, 220, 255, 0.9);
   box-shadow: 0 0 20px rgba(80, 140, 255, 0.15);
-  transform: scale(1.05);
+  transform: scale(1.03);
 }
 
 #drop-zone.drag-over .drop-icon {
@@ -505,16 +510,34 @@ html, body {
 
 #drop-zone.processing {
   pointer-events: none;
-  opacity: 0.6;
+  border-color: rgba(80, 200, 160, 0.4);
+  background: rgba(30, 60, 50, 0.4);
 }
 
 #drop-zone.processing .drop-icon {
-  animation: drop-spin 1s linear infinite;
+  animation: drop-spin 1.2s linear infinite;
+}
+
+#drop-zone.processing .drop-text {
+  color: rgba(140, 230, 200, 0.8);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+#drop-zone.processing .drop-text::after {
+  content: '';
+  animation: dot-pulse 1.5s ease-in-out infinite;
 }
 
 @keyframes drop-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+@keyframes dot-pulse {
+  0%, 100% { content: ''; }
+  50% { content: '.'; }
 }
 
 /* === toast === */
