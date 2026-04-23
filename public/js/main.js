@@ -201,22 +201,7 @@ function showToast(msg, type = '') {
   toastTimer = setTimeout(() => { toast.hidden = true; }, 3000);
 }
 
-function stripMarkdown(text) {
-  return text
-    .replace(/#{1,6}\s+/g, '')       // headings
-    .replace(/\*\*(.+?)\*\*/g, '$1') // bold
-    .replace(/\*(.+?)\*/g, '$1')     // italic
-    .replace(/`(.+?)`/g, '$1')       // inline code
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links
-    .replace(/^[-*+]\s+/gm, '')      // list items
-    .replace(/^\d+\.\s+/gm, '')      // ordered list
-    .replace(/^>\s+/gm, '')          // blockquotes
-    .replace(/\n{3,}/g, '\n\n')      // extra newlines
-    .trim();
-}
-
 async function ingestMdFile(text, filename) {
-  const cleaned = stripMarkdown(text);
   try {
     const res = await fetch('ingest', {
       method: 'POST',
@@ -224,7 +209,7 @@ async function ingestMdFile(text, filename) {
         'Content-Type': 'application/json',
         'X-Session-Id': getSessionId()
       },
-      body: JSON.stringify({ transcript: cleaned, assistantPrior: `[file: ${filename}]` })
+      body: JSON.stringify({ transcript: text, assistantPrior: `[file: ${filename}]` })
     });
 
     if (!res.ok) {
@@ -284,10 +269,57 @@ function handleMdFile(file) {
   reader.readAsText(file);
 }
 
+function handleMdFiles(files) {
+  if (!files || files.length === 0) return;
+  const mdFiles = Array.from(files).filter(f =>
+    f.name.endsWith('.md') || f.type === 'text/markdown'
+  );
+  if (mdFiles.length === 0) {
+    showToast('No .md files found', 'error');
+    return;
+  }
+  if (mdFiles.length < files.length) {
+    showToast('Some files skipped (not .md)', 'error');
+  }
+  if (mdFiles.length === 1) {
+    handleMdFile(mdFiles[0]);
+    return;
+  }
+  dropZone.classList.add('processing');
+  let processed = 0, failed = 0;
+  for (const file of mdFiles) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      ingestMdFile(e.target.result, file.name).then(() => {
+        processed++;
+        checkDone();
+      }).catch(() => {
+        failed++;
+        checkDone();
+      });
+    };
+    reader.onerror = () => {
+      failed++;
+      checkDone();
+    };
+    reader.readAsText(file);
+  }
+  function checkDone() {
+    if (processed + failed === mdFiles.length) {
+      dropZone.classList.remove('processing');
+      if (failed === 0) {
+        showToast(`+${processed} files ingested`, 'success');
+      } else {
+        showToast(`${processed} ok, ${failed} failed`, 'error');
+      }
+    }
+  }
+}
+
 // Click to open file picker
 dropZone.addEventListener('click', () => mdInput.click());
 mdInput.addEventListener('change', () => {
-  handleMdFile(mdInput.files?.[0]);
+  handleMdFiles(mdInput.files);
   mdInput.value = '';
 });
 
@@ -312,6 +344,5 @@ dropZone.addEventListener('dragleave', e => {
 dropZone.addEventListener('drop', e => {
   e.preventDefault();
   dropZone.classList.remove('drag-over');
-  const file = e.dataTransfer?.files?.[0];
-  handleMdFile(file);
+  handleMdFiles(e.dataTransfer?.files);
 });
