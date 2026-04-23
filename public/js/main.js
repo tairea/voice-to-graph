@@ -20,6 +20,9 @@ const voiceBtn = document.getElementById('voice-btn');
 const voiceModal = document.getElementById('voice-modal');
 const voiceGrid = document.getElementById('voice-grid');
 const voiceModalClose = document.getElementById('voice-modal-close');
+const dropZone = document.getElementById('drop-zone');
+const mdInput = document.getElementById('md-input');
+const toast = document.getElementById('toast');
 
 let live = false;
 
@@ -186,3 +189,129 @@ function getSessionId() {
   }
   return sessionStorage.pharosSessionId;
 }
+
+// ─── Drop Zone ───────────────────────────────────────────────────────────────
+
+let toastTimer = null;
+function showToast(msg, type = '') {
+  toast.textContent = msg;
+  toast.className = type || '';
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.hidden = true; }, 3000);
+}
+
+function stripMarkdown(text) {
+  return text
+    .replace(/#{1,6}\s+/g, '')       // headings
+    .replace(/\*\*(.+?)\*\*/g, '$1') // bold
+    .replace(/\*(.+?)\*/g, '$1')     // italic
+    .replace(/`(.+?)`/g, '$1')       // inline code
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links
+    .replace(/^[-*+]\s+/gm, '')      // list items
+    .replace(/^\d+\.\s+/gm, '')      // ordered list
+    .replace(/^>\s+/gm, '')          // blockquotes
+    .replace(/\n{3,}/g, '\n\n')      // extra newlines
+    .trim();
+}
+
+async function ingestMdFile(text, filename) {
+  const cleaned = stripMarkdown(text);
+  try {
+    const res = await fetch('ingest', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': getSessionId()
+      },
+      body: JSON.stringify({ transcript: cleaned, assistantPrior: `[file: ${filename}]` })
+    });
+
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+
+    const { results, operations } = await res.json();
+
+    const newNodes = [];
+    if (Array.isArray(operations)) {
+      for (const op of operations) {
+        if (op.type === 'remove') {
+          graph.removeNode(op.target_id || op.target_code);
+        } else if (op.type === 'move') {
+          graph.moveNode(op.target_id || op.target_code, op.new_parent_id || op.new_parent_code || 'me');
+        }
+      }
+    }
+
+    if (Array.isArray(results)) {
+      for (const r of results) {
+        if (r.outcome === 'new' && r.node) {
+          graph.addPharosNode({ node: r.node, parentId: r.parentId || r.node.parent_id || 'me' });
+          newNodes.push(r.node);
+        } else if ((r.outcome === 'related' || r.outcome === 'conflicting') && r.claim) {
+          graph.addPharosClaim(r.claim);
+        } else if (r.outcome === 'same' && r.expression) {
+          graph.incrementExpression(r.expression.source_node);
+        }
+      }
+    }
+
+    const count = newNodes.length;
+    showToast(count > 0 ? `+${count} node${count !== 1 ? 's' : ''} from ${filename}` : `Parsed ${filename}`, 'success');
+  } catch (err) {
+    console.error('[md-ingest] error', err);
+    showToast('Failed to parse ' + filename, 'error');
+  }
+}
+
+function handleMdFile(file) {
+  if (!file) return;
+  if (!file.name.endsWith('.md') && file.type !== 'text/markdown') {
+    showToast('.md files only', 'error');
+    return;
+  }
+  dropZone.classList.add('processing');
+  const reader = new FileReader();
+  reader.onload = e => {
+    dropZone.classList.remove('processing');
+    ingestMdFile(e.target.result, file.name);
+  };
+  reader.onerror = () => {
+    dropZone.classList.remove('processing');
+    showToast('Failed to read file', 'error');
+  };
+  reader.readAsText(file);
+}
+
+// Click to open file picker
+dropZone.addEventListener('click', () => mdInput.click());
+mdInput.addEventListener('change', () => {
+  handleMdFile(mdInput.files?.[0]);
+  mdInput.value = '';
+});
+
+// Keyboard accessibility
+dropZone.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    mdInput.click();
+  }
+});
+
+// Drag and drop
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropZone.classList.add('drag-over');
+});
+dropZone.addEventListener('dragleave', e => {
+  if (!dropZone.contains(e.relatedTarget)) {
+    dropZone.classList.remove('drag-over');
+  }
+});
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer?.files?.[0];
+  handleMdFile(file);
+});
