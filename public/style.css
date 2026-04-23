@@ -253,10 +253,9 @@ html, body {
 }
 
 /* === info button === */
-#info-btn {
+#info-btn, #voice-btn {
   position: fixed;
   bottom: 20px;
-  right: 20px;
   z-index: 25;
   width: 32px;
   height: 32px;
@@ -274,8 +273,13 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
+#info-btn { right: 20px; bottom: 60px; }
+#voice-btn { right: 20px; bottom: 20px; }
+
 #info-btn:hover,
-#info-btn[aria-expanded="true"] {
+#info-btn[aria-expanded="true"],
+#voice-btn:hover,
+#voice-btn[aria-expanded="true"] {
   color: rgba(160, 200, 255, 0.9);
   border-color: rgba(120, 160, 255, 0.3);
   background: rgba(20, 30, 55, 0.7);
@@ -284,7 +288,7 @@ html, body {
 /* === info panel === */
 #info-panel {
   position: fixed;
-  bottom: 62px;
+  bottom: 102px;
   right: 20px;
   z-index: 25;
   width: 300px;
@@ -329,4 +333,115 @@ html, body {
   color: rgba(120, 180, 255, 0.8);
   font-style: normal;
   font-family: 'Sora', monospace;
+}
+
+/* === modal base === */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 10, 20, 0.7);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.modal:not([hidden]) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-content {
+  width: 360px;
+  max-width: 90vw;
+  border-radius: 16px;
+  background: rgba(10, 16, 30, 0.95);
+  border: 1px solid rgba(100, 150, 255, 0.12);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  padding: 20px;
+  transform: scale(0.96);
+  transition: transform 0.2s ease;
+}
+
+.modal:not([hidden]) .modal-content {
+  transform: scale(1);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.modal-header h3 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(180, 210, 255, 0.85);
+}
+
+#voice-modal-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(120, 160, 255, 0.1);
+  background: rgba(20, 30, 50, 0.6);
+  color: rgba(140, 170, 220, 0.6);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+#voice-modal-close:hover {
+  border-color: rgba(120, 160, 255, 0.3);
+  color: rgba(200, 220, 255, 0.9);
+  background: rgba(30, 50, 80, 0.7);
+}
+
+/* === voice grid === */
+.voice-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.voice-option {
+  padding: 12px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 160, 255, 0.08);
+  background: rgba(15, 22, 40, 0.6);
+  color: rgba(160, 190, 230, 0.7);
+  font-size: 11.5px;
+  font-family: 'Sora', sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+  outline: none;
+}
+
+.voice-option:hover {
+  border-color: rgba(100, 160, 255, 0.3);
+  background: rgba(30, 50, 90, 0.5);
+  color: rgba(200, 220, 255, 0.9);
+  transform: translateY(-1px);
+}
+
+.voice-option.selected {
+  border-color: rgba(80, 180, 255, 0.45);
+  background: rgba(40, 70, 140, 0.4);
+  color: #a8c8ff;
+  box-shadow: 0 0 12px rgba(80, 140, 255, 0.1);
 }

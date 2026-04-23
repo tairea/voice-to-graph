@@ -18,7 +18,7 @@ Just briefly acknowledge (e.g. "Done", "Got it", "On it") and continue naturally
 Do not ask what the codes mean.
 `.trim();
 
-function sendSessionUpdate() {
+function sendSessionUpdate(voice) {
   const update = {
     type: 'session.update',
     session: {
@@ -27,15 +27,18 @@ function sendSessionUpdate() {
       audio: {
         input: {
           transcription: { model: 'whisper-1' }
+        },
+        output: {
+          voice: voice || 'alloy'
         }
       }
     }
   };
   dc.send(JSON.stringify(update));
-  console.log('[realtime] sent session.update');
+  console.log('[realtime] sent session.update with voice:', voice);
 }
 
-export async function start({ onTranscript, onStatus }) {
+export async function start({ onTranscript, onStatus }, voice) {
   onStatus?.('connecting');
 
   const sessionRes = await fetch('session', { method: 'POST' });
@@ -68,7 +71,7 @@ export async function start({ onTranscript, onStatus }) {
     if (event.type) console.debug('[realtime]', event.type);
 
     if (event.type === 'session.created') {
-      sendSessionUpdate();
+      sendSessionUpdate(voice);
       onStatus?.('live');
       return;
     }

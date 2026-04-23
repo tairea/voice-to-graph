@@ -61,6 +61,23 @@
         <line x1="12" y1="8" x2="12.01" y2="8"/>
       </svg>
     </button>
+    <button id="voice-btn" aria-label="Change voice">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        <line x1="12" y1="19" x2="12" y2="23"/>
+        <line x1="8" y1="23" x2="16" y2="23"/>
+      </svg>
+    </button>
+    <div id="voice-modal" class="modal" hidden>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Select Voice</h3>
+          <button id="voice-modal-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="voice-grid" id="voice-grid"></div>
+      </div>
+    </div>
     <div id="info-panel" hidden>
       <p><strong>PHAROS — Voice to Knowledge Graph</strong></p>
       <p>Speak naturally. Every concept is resolved against the canonical identity graph using the CubeCodex three-test law.</p>

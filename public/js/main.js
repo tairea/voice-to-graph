@@ -2,6 +2,11 @@ import * as graph from './graph.js';
 import * as realtime from './realtime.js';
 import { setAvatarFromFile } from './avatar.js';
 
+const VOICES = [
+  'alloy', 'ash', 'ballad', 'coral', 'echo',
+  'marin', 'sage', 'shimmer', 'verse', 'cedar'
+];
+
 const statusEl = document.getElementById('status');
 const statusPill = document.getElementById('status-pill');
 const micBtn = document.getElementById('mic-btn');
@@ -11,13 +16,63 @@ const graphEl = document.getElementById('graph');
 const tipEl = document.getElementById('tip');
 const infoBtn = document.getElementById('info-btn');
 const infoPanel = document.getElementById('info-panel');
+const voiceBtn = document.getElementById('voice-btn');
+const voiceModal = document.getElementById('voice-modal');
+const voiceGrid = document.getElementById('voice-grid');
+const voiceModalClose = document.getElementById('voice-modal-close');
 
 let live = false;
+
+function getSelectedVoice() {
+  return localStorage.getItem('pharos-voice') || 'alloy';
+}
+
+function buildVoiceGrid() {
+  voiceGrid.innerHTML = '';
+  const selected = getSelectedVoice();
+  for (const voice of VOICES) {
+    const btn = document.createElement('button');
+    btn.className = 'voice-option' + (voice === selected ? ' selected' : '');
+    btn.textContent = voice;
+    btn.dataset.voice = voice;
+    btn.addEventListener('click', () => {
+      localStorage.setItem('pharos-voice', voice);
+      document.querySelectorAll('.voice-option').forEach(el => el.classList.remove('selected'));
+      btn.classList.add('selected');
+      voiceModal.hidden = true;
+    });
+    voiceGrid.appendChild(btn);
+  }
+}
+
+function openVoiceModal() {
+  buildVoiceGrid();
+  voiceModal.hidden = false;
+  voiceBtn.setAttribute('aria-expanded', 'true');
+}
+
+function closeVoiceModal() {
+  voiceModal.hidden = true;
+  voiceBtn.setAttribute('aria-expanded', 'false');
+}
 
 infoBtn.addEventListener('click', () => {
   const open = !infoPanel.hidden;
   infoPanel.hidden = open;
   infoBtn.setAttribute('aria-expanded', !open);
+});
+
+voiceBtn.addEventListener('click', () => {
+  if (voiceModal.hidden) {
+    openVoiceModal();
+  } else {
+    closeVoiceModal();
+  }
+});
+
+voiceModalClose.addEventListener('click', closeVoiceModal);
+voiceModal.addEventListener('click', (e) => {
+  if (e.target === voiceModal) closeVoiceModal();
 });
 
 function setStatus(s) {
@@ -112,7 +167,8 @@ micBtn.addEventListener('click', async () => {
 
   micBtn.disabled = true;
   try {
-    await realtime.start({ onTranscript: handleTranscript, onStatus: setStatus });
+    const voice = getSelectedVoice();
+    await realtime.start({ onTranscript: handleTranscript, onStatus: setStatus }, voice);
     live = true;
     micBtn.dataset.live = 'true';
   } catch (err) {
