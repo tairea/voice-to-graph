@@ -54,24 +54,38 @@ ${nodeList}
   left   — Context / Field / What surrounds it
   right  — Action / Effect / The reach when resolved
 
-═══ CLAIM PREDICATES ═══
+═══ CUBE FACE → PREDICATE SELECTION ═══
 
-Cube predicates (use for "related" outcomes):
-  EXPRESSES        — principle manifests as expression
-  ORIGINATES_FROM  — principle arises from cause
-  CONTEXTUALIZES   — principle is framed by field
-  OPERATIONALIZES  — principle drives action
-  INSTANCES        — ground truth appears as expression
-  GROUNDS          — ground truth is rooted in history
-  EMBEDS_IN        — ground truth sits within context
-  ENACTS           — ground truth produces effect
-  APPEARS_IN       — expression is visible within context
-  PRODUCES         — expression generates effect
-  EMERGES_FROM     — cause arises from context
-  GENERATES        — cause produces effect
+Predicate selection is structural: ask which cube face of the EXISTING node the new concept touches.
 
-Meta-predicates:
-  CONTRADICTS      — active semantic conflict (use for "conflicting" outcome)
+  FRONT (Expression / Output / How it appears):
+    → EXPRESSES     — principle manifests as expression
+    → PRODUCES      — expression generates effect
+
+  BACK (Origin / Cause / What generated this):
+    → EMERGES_FROM  — cause arises from context
+    → ORIGINATES_FROM — principle arises from cause
+    → GENERATES     — cause produces effect
+
+  TOP (Principle / Why / Abstract domain):
+    → INSTANCES     — ground truth appears as expression
+
+  BOTTOM (Instance / Ground truth / Physical reality):
+    → GROUNDS       — principle is rooted in history
+    → EMBEDS_IN     — ground truth sits within context
+
+  LEFT (Context / Field / What surrounds it):
+    → CONTEXTUALIZES — principle is framed by field
+    → EMBEDS_IN     — ground truth sits within context
+    → APPEARS_IN    — expression is visible within context
+
+  RIGHT (Action / Effect / The reach when resolved):
+    → OPERATIONALIZES — principle drives action
+    → ENACTS        — ground truth produces effect
+    → GENERATES     — cause produces effect
+
+Meta-predicates (used for resolution outcomes, not cube face mapping):
+  CONTRADICTS      — active semantic conflict
   EQUIVALENT_TO    — confirmed identity match (post-merge only)
   DEPENDS_ON       — existence requires another node
   PART_OF          — structural membership
@@ -79,6 +93,8 @@ Meta-predicates:
   SYNTHESIS_OF     — this is the 13th of a completed cluster
   GENERATES_CYCLE  — this node is origin of the next cycle
   IS_ANALOGOUS_TO  — related but distinct identity
+
+The face determines the predicate — not intuition. Use the mapping above for every "related" outcome.
 
 ═══ NODE TYPES ═══
 

@@ -48,18 +48,18 @@ app.post('/ingest', async (req, res) => {
     return res.status(400).json({ error: 'transcript (string) required' });
   }
 
-  // Create context object for this ingest call
-  const contextId = `ctx-${new Date().toISOString().slice(0,10)}-${Date.now()}`;
-  store.addContext({
-    id: contextId,
-    object_class: 'context',
-    time: new Date().toISOString().slice(0,10),
-    epistemic_mode: 'observation',
-    session_id: req.headers['x-session-id'] || 'default',
-    created: new Date().toISOString()
-  });
-
   try {
+    // Create context object for this ingest call
+    const contextId = `ctx-${new Date().toISOString().slice(0,10)}-${Date.now()}`;
+    store.addContext({
+      id: contextId,
+      object_class: 'context',
+      time: new Date().toISOString().slice(0,10),
+      epistemic_mode: 'observation',
+      session_id: req.headers['x-session-id'] || 'default',
+      created: new Date().toISOString()
+    });
+
     const result = await pharosResolve(transcript, assistantPrior || '', contextId);
     res.json({ context_id: contextId, ...result });
   } catch (err) {

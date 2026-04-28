@@ -258,9 +258,9 @@ function handleMdFile(file) {
   }
   dropZone.classList.add('processing');
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     dropZone.classList.remove('processing');
-    ingestMdFile(e.target.result, file.name);
+    await ingestMdFile(e.target.result, file.name);
   };
   reader.onerror = () => {
     dropZone.classList.remove('processing');
