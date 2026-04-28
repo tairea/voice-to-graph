@@ -15,6 +15,7 @@ let fitTimer = null;
 let branchCounters = {};
 let nextBranchCharCode = 65;
 let meHoverCb = null;
+let nodeRightClickCb = null;
 
 const AVATAR_TEXTURE_SIZE = 256;
 const AVATAR_SPRITE_SIZE = 28;
@@ -223,10 +224,23 @@ function buildNodeObject(node) {
     sprite.scale.set(AVATAR_SPRITE_SIZE, AVATAR_SPRITE_SIZE, 1);
     group.add(sprite);
   } else {
-    const color = resonanceColor(node.resonanceState || 'active');
+    const isShared = !!node.sharedSpace;
+    const color = isShared ? 0xffd700 : resonanceColor(node.resonanceState || 'active');
     const geom = new THREE.SphereGeometry(CONCEPT_NODE_RADIUS, 16, 16);
-    const mat = new THREE.MeshLambertMaterial({ color });
+    const mat = new THREE.MeshLambertMaterial({ color, emissive: isShared ? 0x664400 : 0x000000 });
     group.add(new THREE.Mesh(geom, mat));
+
+    // Gold halo for shared nodes
+    if (isShared) {
+      const haloGeom = new THREE.SphereGeometry(CONCEPT_NODE_RADIUS + 1.2, 16, 16);
+      const haloMat = new THREE.MeshBasicMaterial({
+        color: 0xffd700,
+        transparent: true,
+        opacity: 0.22,
+        side: THREE.BackSide,
+      });
+      group.add(new THREE.Mesh(haloGeom, haloMat));
+    }
 
     // Contradiction halo
     if (node.hasContradiction) {
@@ -320,6 +334,10 @@ function findNode(ref, nodes) {
 function buildNodeTip(node) {
   const name = node.canonicalName || node.label || node.id;
   let html = `<strong>${name}</strong>`;
+  if (node.sharedSpace) {
+    const owner = node.ownerDID ? node.ownerDID.slice(0, 24) + '…' : 'remote';
+    html += `<div class="tip-shared">shared from ${owner}</div>`;
+  }
   if (node.definitionCore) html += `<br><em>${node.definitionCore}</em>`;
   if (node.resonanceState) html += `<div class="tip-state">${node.resonanceState} · ${node.confidence || 'seed'}</div>`;
   if (node.cubeTop || node.cubeBottom) {
@@ -354,8 +372,13 @@ export function init(container, tip) {
     .nodeRelSize(6)
     .nodeThreeObjectExtend(false)
     .nodeThreeObject(buildNodeObject)
-    .linkColor(link => predicateColor(link.predicate))
+    .linkColor(link => link.sharedSpace ? 'rgba(255, 215, 0, 0.7)' : predicateColor(link.predicate))
     .linkWidth(link => predicateWidth(link.predicate))
+    .onNodeRightClick((node, event) => {
+      if (!nodeRightClickCb || !node || node.id === 'me') return;
+      event.preventDefault?.();
+      nodeRightClickCb(node, event);
+    })
     .linkDirectionalParticles(2)
     .linkDirectionalParticleWidth(1.5)
     .onLinkHover(link => {
@@ -443,21 +466,28 @@ export function getNodeLabels() {
 }
 
 // Add a full PHAROS node to the graph
-export function addPharosNode({ node, parentId }) {
+export function addPharosNode({ node, parentId, sharedSpaceId, ownerDid }) {
   const data = graph.graphData();
+  const sharedSpace = sharedSpaceId || node._sharedSpace || null;
+  const ownerDID = ownerDid || node._owner_did || null;
 
   // Check if already in graph (by PHAROS id)
   const existing = data.nodes.find(n => n.id === node.id);
   if (existing) {
     // Update resonance state in case it changed
-    existing.resonanceState = node.resonance_state;
+    existing.resonanceState = node.resonance_state || existing.resonanceState;
     existing.expressionCount = (existing.expressionCount || 0);
+    if (sharedSpace && !existing.sharedSpace) {
+      existing.sharedSpace = sharedSpace;
+      existing.ownerDID = ownerDID;
+    }
     refreshNodeVisuals();
     lastNodeId = node.id;
     return;
   }
 
-  const parentNode = findNode(parentId, data.nodes) || data.nodes.find(n => n.id === 'me');
+  const resolvedParentId = node.parent_id || parentId || 'me';
+  const parentNode = findNode(resolvedParentId, data.nodes) || data.nodes.find(n => n.id === 'me');
   const branch = parentNode.id === 'me' ? allocBranch() : (parentNode.branch || allocBranch());
   const code = node.code || nextCodeInBranch(branch);
 
@@ -478,20 +508,23 @@ export function addPharosNode({ node, parentId }) {
     branch,
     code,
     expressionCount: 0,
-    hasContradiction: false
+    hasContradiction: false,
+    sharedSpace,
+    ownerDID,
   });
 
   data.links.push({
     source: parentNode.id,
     target: node.id,
     predicate: 'PARENT',
-    reasoning: node.definition_core
+    reasoning: node.definition_core,
+    sharedSpace,
   });
 
   graph.graphData(data);
   lastNodeId = node.id;
   scheduleFit();
-  console.log(`[graph] +node ${code}: ${node.canonical_name} (${node.resonance_state})`);
+  console.log(`[graph] +node ${code}: ${node.canonical_name}${sharedSpace ? ' [shared:' + sharedSpace + ']' : ''}`);
 }
 
 // Add a typed PHAROS claim edge
@@ -526,7 +559,8 @@ export function addPharosClaim(claim) {
     target: claim.object_node,
     predicate: claim.predicate,
     reasoning: claim.reasoning,
-    confidence: claim.confidence
+    confidence: claim.confidence,
+    sharedSpace: claim._sharedSpace || null,
   });
 
   graph.graphData(data);
@@ -621,4 +655,8 @@ export function moveNode(ref, newParentRef) {
 
 export function onMeHover(cb) {
   meHoverCb = cb;
+}
+
+export function onNodeRightClick(cb) {
+  nodeRightClickCb = cb;
 }

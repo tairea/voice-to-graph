@@ -73,7 +73,92 @@ app.post('/ingest', async (req, res) => {
 app.get('/ingest/state', (_req, res) => {
   res.json({
     nodes: store.getAllNodes(),
-    claims: store.getAllClaims()
+    claims: store.getAllClaims(),
+    identity: store.getIdentity(),
+    peers: store.getPeerList(),
+    publicSpaces: store.getPublicSpaces(),
+  });
+});
+
+// ─── /ingest/identity — return DID and profile only ──────────────────────────
+
+app.get('/ingest/identity', (_req, res) => {
+  res.json(store.getIdentity());
+});
+
+// ─── /ingest/share — make subtree public / share with peer / link to avatar ──
+
+app.post('/ingest/share', async (req, res) => {
+  const { nodeId, mode, recipientDID } = req.body || {};
+  if (!nodeId) return res.status(400).json({ error: 'nodeId required' });
+  try {
+    let spaceId;
+    if (mode === 'public') {
+      spaceId = store.makePublic(nodeId);
+    } else if (mode === 'specific') {
+      if (!recipientDID) return res.status(400).json({ error: 'recipientDID required for specific mode' });
+      spaceId = await store.shareWithSpecific(nodeId, recipientDID);
+    } else if (mode === 'avatar') {
+      spaceId = store.linkToAvatar(nodeId);
+    } else {
+      return res.status(400).json({ error: 'mode must be "public" | "specific" | "avatar"' });
+    }
+    res.json({ spaceId });
+  } catch (err) {
+    console.error('[share] error', err);
+    res.status(500).json({ error: String(err.message || err) });
+  }
+});
+
+app.delete('/ingest/share/:spaceId', (req, res) => {
+  try {
+    store.stopPublic(req.params.spaceId);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err.message || err) });
+  }
+});
+
+// ─── /ingest/peers — peer management ─────────────────────────────────────────
+
+app.get('/ingest/peers', (_req, res) => {
+  res.json(store.getPeerList());
+});
+
+app.post('/ingest/peers', (req, res) => {
+  const { did: peerDID, name, relayAddress } = req.body || {};
+  if (!peerDID) return res.status(400).json({ error: 'did required' });
+  const entry = store.addPeer(peerDID, { name, relayAddress });
+  res.json(entry);
+});
+
+app.delete('/ingest/peers/:did', (req, res) => {
+  store.removePeer(req.params.did);
+  res.json({ ok: true });
+});
+
+// ─── /ingest/events — SSE stream for live remote shared nodes/claims ─────────
+
+app.get('/ingest/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+  res.write(`: connected\n\n`);
+
+  const nodeUnsub = store.onRemoteNode(({ node, spaceId }) => {
+    res.write(`event: node\ndata: ${JSON.stringify({ node, spaceId })}\n\n`);
+  });
+  const claimUnsub = store.onRemoteClaim(({ claim, spaceId }) => {
+    res.write(`event: claim\ndata: ${JSON.stringify({ claim, spaceId })}\n\n`);
+  });
+
+  const ping = setInterval(() => res.write(`: ping\n\n`), 25000);
+
+  req.on('close', () => {
+    clearInterval(ping);
+    nodeUnsub();
+    claimUnsub();
   });
 });
 

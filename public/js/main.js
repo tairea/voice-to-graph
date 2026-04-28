@@ -23,6 +23,11 @@ const voiceModalClose = document.getElementById('voice-modal-close');
 const dropZone = document.getElementById('drop-zone');
 const mdInput = document.getElementById('md-input');
 const toast = document.getElementById('toast');
+const peersBtn = document.getElementById('peers-btn');
+const peersPanel = document.getElementById('peers-panel');
+const peersList = document.getElementById('peers-list');
+const peersDidBadge = document.getElementById('peers-did');
+const peerAddBtn = document.getElementById('peer-add-btn');
 
 let live = false;
 
@@ -346,3 +351,243 @@ dropZone.addEventListener('drop', e => {
   dropZone.classList.remove('drag-over');
   handleMdFiles(e.dataTransfer?.files);
 });
+
+// ─── P2P: identity, peer management, context menu, SSE ──────────────────────
+
+let myDid = null;
+
+async function loadIdentity() {
+  try {
+    const res = await fetch('ingest/identity');
+    if (!res.ok) return;
+    const ident = await res.json();
+    myDid = ident.did;
+    if (peersDidBadge) {
+      peersDidBadge.textContent = ident.did;
+      peersDidBadge.title = 'Click to copy your DID';
+    }
+  } catch (err) {
+    console.warn('[identity] load failed', err);
+  }
+}
+
+async function loadPeers() {
+  try {
+    const res = await fetch('ingest/peers');
+    if (!res.ok) return [];
+    return await res.json();
+  } catch { return []; }
+}
+
+function renderPeerList(list) {
+  if (!peersList) return;
+  peersList.innerHTML = '';
+  if (!list.length) {
+    peersList.innerHTML = '<div class="peer-empty">No peers yet. Add one to share subtrees with.</div>';
+    return;
+  }
+  for (const p of list) {
+    const row = document.createElement('div');
+    row.className = 'peer-row';
+    row.innerHTML = `
+      <div class="peer-info">
+        <div class="peer-name">${p.name || '(unnamed)'}</div>
+        <div class="peer-did" title="${p.did}">${p.did.slice(0, 36)}…</div>
+      </div>
+      <button class="peer-remove" data-did="${p.did}" aria-label="Remove peer">×</button>
+    `;
+    row.querySelector('.peer-remove').addEventListener('click', async () => {
+      await fetch(`ingest/peers/${encodeURIComponent(p.did)}`, { method: 'DELETE' });
+      const peers = await loadPeers();
+      renderPeerList(peers);
+    });
+    peersList.appendChild(row);
+  }
+}
+
+if (peersBtn && peersPanel) {
+  peersBtn.addEventListener('click', async () => {
+    const willOpen = peersPanel.hidden;
+    peersPanel.hidden = !willOpen;
+    peersBtn.setAttribute('aria-expanded', willOpen);
+    if (willOpen) {
+      const peers = await loadPeers();
+      renderPeerList(peers);
+    }
+  });
+}
+
+if (peersDidBadge) {
+  peersDidBadge.addEventListener('click', () => {
+    if (!myDid) return;
+    navigator.clipboard?.writeText(myDid);
+    showToast('DID copied to clipboard', 'success');
+  });
+}
+
+if (peerAddBtn) {
+  peerAddBtn.addEventListener('click', () => showPeerAddModal());
+}
+
+function showPeerAddModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'p2p-modal-overlay';
+  overlay.innerHTML = `
+    <div class="p2p-modal">
+      <h3>Add a peer</h3>
+      <p>Paste their DID (and optional name) to subscribe to their shared subtrees.</p>
+      <input class="p2p-input" id="peer-did-input" type="text" placeholder="did:gun:…" autocomplete="off" />
+      <input class="p2p-input" id="peer-name-input" type="text" placeholder="Name (optional)" autocomplete="off" />
+      <div class="p2p-actions">
+        <button class="p2p-btn-secondary" data-action="cancel">Cancel</button>
+        <button class="p2p-btn-primary" data-action="add">Add peer</button>
+      </div>
+    </div>
+  `;
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  overlay.querySelector('[data-action="cancel"]').addEventListener('click', close);
+  overlay.querySelector('[data-action="add"]').addEventListener('click', async () => {
+    const did = overlay.querySelector('#peer-did-input').value.trim();
+    const name = overlay.querySelector('#peer-name-input').value.trim() || null;
+    if (!did) { showToast('DID required', 'error'); return; }
+    await fetch('ingest/peers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ did, name }),
+    });
+    close();
+    const peers = await loadPeers();
+    renderPeerList(peers);
+    showToast('Peer added', 'success');
+  });
+  document.body.appendChild(overlay);
+  overlay.querySelector('#peer-did-input').focus();
+}
+
+// ─── Context menu on right-click ────────────────────────────────────────────
+
+function closeContextMenu() {
+  document.querySelectorAll('.ctx-menu').forEach(el => el.remove());
+}
+
+graph.onNodeRightClick((node, event) => {
+  closeContextMenu();
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+  menu.innerHTML = `
+    <button data-action="make-public">🌐 Make public</button>
+    <button data-action="share-specific">🔐 Share with…</button>
+    <button data-action="link-avatar">🔗 Link to my avatar</button>
+  `;
+  menu.style.left = (event.clientX + 6) + 'px';
+  menu.style.top = (event.clientY + 6) + 'px';
+  document.body.appendChild(menu);
+
+  const labelOf = node.canonicalName || node.label || node.id;
+
+  menu.querySelector('[data-action="make-public"]').addEventListener('click', async () => {
+    closeContextMenu();
+    const r = await postShare({ nodeId: node.id, mode: 'public' });
+    if (r?.spaceId) showToast(`"${labelOf}" made public`, 'success');
+  });
+
+  menu.querySelector('[data-action="share-specific"]').addEventListener('click', () => {
+    closeContextMenu();
+    showShareSpecificModal(node);
+  });
+
+  menu.querySelector('[data-action="link-avatar"]').addEventListener('click', async () => {
+    closeContextMenu();
+    const r = await postShare({ nodeId: node.id, mode: 'avatar' });
+    if (r?.spaceId) showToast(`"${labelOf}" linked to your avatar`, 'success');
+  });
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.ctx-menu')) closeContextMenu();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeContextMenu(); });
+
+async function postShare(body) {
+  try {
+    const res = await fetch('ingest/share', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      showToast('Share failed: ' + err, 'error');
+      return null;
+    }
+    return await res.json();
+  } catch (err) {
+    showToast('Share failed: ' + err.message, 'error');
+    return null;
+  }
+}
+
+function showShareSpecificModal(node) {
+  const overlay = document.createElement('div');
+  overlay.className = 'p2p-modal-overlay';
+  overlay.innerHTML = `
+    <div class="p2p-modal">
+      <h3>Share "${node.canonicalName || node.id}"</h3>
+      <p>Paste the recipient's DID. The subtree will be encrypted end-to-end.</p>
+      <input class="p2p-input" id="share-did-input" type="text" placeholder="did:gun:…" autocomplete="off" />
+      <div class="p2p-actions">
+        <button class="p2p-btn-secondary" data-action="cancel">Cancel</button>
+        <button class="p2p-btn-primary" data-action="share">Share</button>
+      </div>
+    </div>
+  `;
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  overlay.querySelector('[data-action="cancel"]').addEventListener('click', close);
+  overlay.querySelector('[data-action="share"]').addEventListener('click', async () => {
+    const did = overlay.querySelector('#share-did-input').value.trim();
+    if (!did) { showToast('DID required', 'error'); return; }
+    const r = await postShare({ nodeId: node.id, mode: 'specific', recipientDID: did });
+    close();
+    if (r?.spaceId) showToast('Shared (encrypted)', 'success');
+  });
+  document.body.appendChild(overlay);
+  overlay.querySelector('#share-did-input').focus();
+}
+
+// ─── SSE: ingest live remote shared nodes/claims ────────────────────────────
+
+function startSSE() {
+  let events;
+  try {
+    events = new EventSource('ingest/events');
+  } catch (err) {
+    console.warn('[sse] could not open', err);
+    return;
+  }
+  events.addEventListener('node', e => {
+    try {
+      const { node, spaceId } = JSON.parse(e.data);
+      graph.addPharosNode({
+        node,
+        parentId: node.parent_id || 'me',
+        sharedSpaceId: spaceId,
+        ownerDid: node._owner_did,
+      });
+    } catch (err) { console.warn('[sse] node parse', err); }
+  });
+  events.addEventListener('claim', e => {
+    try {
+      const { claim, spaceId } = JSON.parse(e.data);
+      graph.addPharosClaim({ ...claim, _sharedSpace: spaceId });
+    } catch (err) { console.warn('[sse] claim parse', err); }
+  });
+  events.onerror = () => {
+    // EventSource will auto-reconnect — just log once
+    console.warn('[sse] connection error, will retry');
+  };
+}
+
+loadIdentity();
+startSSE();
