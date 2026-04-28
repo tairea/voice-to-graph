@@ -46,7 +46,9 @@ export const seaPair = identity.pair;
 
 // ─── Gun init ────────────────────────────────────────────────────────────────
 
-const RELAY_URL = process.env.GUN_RELAY_URL || 'http://localhost:8765/gun';
+const RELAY_URL = process.env.GUN_RELAY_URL === undefined
+  ? 'https://experiments.sunriselabs.io/gun'
+  : process.env.GUN_RELAY_URL;
 const peers = RELAY_URL ? [RELAY_URL] : [];
 
 const gun = Gun({

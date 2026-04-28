@@ -372,7 +372,15 @@ export function init(container, tip) {
     .nodeRelSize(6)
     .nodeThreeObjectExtend(false)
     .nodeThreeObject(buildNodeObject)
-    .linkColor(link => link.sharedSpace ? 'rgba(255, 215, 0, 0.7)' : predicateColor(link.predicate))
+    .linkColor(link => {
+      if (link.sharedSpace) return 'rgba(255, 215, 0, 0.7)';
+      const src = link.source, tgt = link.target;
+      if (src && typeof src === 'object' && src.sharedSpace &&
+          tgt && typeof tgt === 'object' && tgt.sharedSpace) {
+        return 'rgba(255, 215, 0, 0.7)';
+      }
+      return predicateColor(link.predicate);
+    })
     .linkWidth(link => predicateWidth(link.predicate))
     .onNodeRightClick((node, event) => {
       if (!nodeRightClickCb || !node) return;

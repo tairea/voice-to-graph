@@ -7,9 +7,10 @@ the utterance is a *new* idea, *related* to an existing one, the *same*
 idea expressed differently, or in *conflict* with something already there.
 
 Each graph can be selectively shared with another PHAROS instance —
-publicly, to a specific peer (end-to-end encrypted), or to anyone who has
-exchanged DIDs with you. Sharing rides a small **Gun.js** relay; nothing
-else is required.
+publicly (visible to anyone running PHAROS), to a specific peer
+(end-to-end encrypted), or to anyone who has exchanged DIDs with you.
+Sharing rides a hosted **Gun.js** relay that every instance joins by
+default — `npm start` is all you need.
 
 ---
 
@@ -158,7 +159,7 @@ tooltip badge.
 OPENAI_API_KEY=sk-...                # required (Realtime + extract shim)
 ANTHROPIC_API_KEY=sk-ant-...         # required (PHAROS resolver)
 PORT=3002                            # default port
-GUN_RELAY_URL=http://localhost:8765/gun  # network sync target
+GUN_RELAY_URL=https://experiments.sunriselabs.io/gun  # shared relay (default); set to your own for self-hosting
 PHAROS_NAME=Ian                      # optional friendly name in the profile
 RESOLVE_MODEL=claude-sonnet-4-6      # optional override
 EXTRACT_MODEL=gpt-4.1-mini           # optional override
@@ -168,16 +169,13 @@ EXTRACT_MODEL=gpt-4.1-mini           # optional override
 
 ## Quick start (local)
 
+Requires Node ≥18.
+
 ```bash
 git clone https://github.com/tairea/voice-to-graph.git
 cd voice-to-graph
 npm install
 
-# In one terminal: a local Gun relay (or skip and run offline)
-cd deploy/gun-relay && npm install && node relay.js
-
-# In another: the app
-cd ../..
 echo OPENAI_API_KEY=sk-...    >  .env
 echo ANTHROPIC_API_KEY=sk-... >> .env
 npm start
@@ -186,6 +184,13 @@ npm start
 Open http://localhost:3002, upload an avatar, click the mic, and start
 talking. Drop a `.md` file on the bottom-left target to ingest a
 document instead.
+
+By default your instance joins the shared Gun relay at
+`https://experiments.sunriselabs.io/gun`, so subtree shares converge
+with anyone else running the app. To run **fully offline** (no P2P
+sharing) set `GUN_RELAY_URL=` (empty) in `.env`. To **self-host the
+relay** instead, run `cd deploy/gun-relay && npm install && node relay.js`
+in another terminal and set `GUN_RELAY_URL=http://localhost:8765/gun`.
 
 ## Live deployment on this host
 
