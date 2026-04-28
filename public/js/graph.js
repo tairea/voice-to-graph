@@ -375,7 +375,7 @@ export function init(container, tip) {
     .linkColor(link => link.sharedSpace ? 'rgba(255, 215, 0, 0.7)' : predicateColor(link.predicate))
     .linkWidth(link => predicateWidth(link.predicate))
     .onNodeRightClick((node, event) => {
-      if (!nodeRightClickCb || !node || node.id === 'me') return;
+      if (!nodeRightClickCb || !node) return;
       event.preventDefault?.();
       nodeRightClickCb(node, event);
     })

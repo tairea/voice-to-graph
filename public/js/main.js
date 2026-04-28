@@ -494,23 +494,33 @@ function closeContextMenu() {
 
 graph.onNodeRightClick((node, event) => {
   closeContextMenu();
+  const isMe = node.id === 'me';
   const menu = document.createElement('div');
   menu.className = 'ctx-menu';
-  menu.innerHTML = `
-    <button data-action="make-public">🌐 Make public</button>
-    <button data-action="share-specific">🔐 Share with…</button>
-    <button data-action="link-avatar">🔗 Link to my avatar</button>
-  `;
+  menu.innerHTML = isMe
+    ? `
+      <button data-action="make-public">🌐 Share entire graph publicly</button>
+      <button data-action="share-specific">🔐 Share entire graph with…</button>
+      <button data-action="link-avatar">🔗 Link entire graph to peers</button>
+    `
+    : `
+      <button data-action="make-public">🌐 Make public</button>
+      <button data-action="share-specific">🔐 Share with…</button>
+      <button data-action="link-avatar">🔗 Link to my avatar</button>
+      <button data-action="remove" class="ctx-danger">🗑 Remove node</button>
+    `;
   menu.style.left = (event.clientX + 6) + 'px';
   menu.style.top = (event.clientY + 6) + 'px';
   document.body.appendChild(menu);
 
-  const labelOf = node.canonicalName || node.label || node.id;
+  const labelOf = isMe
+    ? 'Entire graph'
+    : (node.canonicalName || node.label || node.id);
 
   menu.querySelector('[data-action="make-public"]').addEventListener('click', async () => {
     closeContextMenu();
     const r = await postShare({ nodeId: node.id, mode: 'public' });
-    if (r?.spaceId) showToast(`"${labelOf}" made public`, 'success');
+    if (r?.spaceId) showToast(`${labelOf} made public`, 'success');
   });
 
   menu.querySelector('[data-action="share-specific"]').addEventListener('click', () => {
@@ -521,7 +531,24 @@ graph.onNodeRightClick((node, event) => {
   menu.querySelector('[data-action="link-avatar"]').addEventListener('click', async () => {
     closeContextMenu();
     const r = await postShare({ nodeId: node.id, mode: 'avatar' });
-    if (r?.spaceId) showToast(`"${labelOf}" linked to your avatar`, 'success');
+    if (r?.spaceId) showToast(`${labelOf} linked to your avatar`, 'success');
+  });
+
+  menu.querySelector('[data-action="remove"]')?.addEventListener('click', async () => {
+    closeContextMenu();
+    if (!confirm(`Remove "${labelOf}" and everything under it?`)) return;
+    try {
+      const res = await fetch(`ingest/node/${encodeURIComponent(node.id)}`, { method: 'DELETE' });
+      if (!res.ok) {
+        showToast('Remove failed: ' + await res.text(), 'error');
+        return;
+      }
+      const { removed = [] } = await res.json();
+      for (const id of removed) graph.removeNode(id);
+      showToast(`Removed ${removed.length} node${removed.length !== 1 ? 's' : ''}`, 'success');
+    } catch (err) {
+      showToast('Remove failed: ' + err.message, 'error');
+    }
   });
 });
 
@@ -610,5 +637,30 @@ function startSSE() {
   };
 }
 
+async function hydrateState() {
+  try {
+    const res = await fetch('ingest/state');
+    if (!res.ok) return;
+    const { nodes = [], claims = [] } = await res.json();
+
+    // Add parents before children so PARENT links resolve correctly
+    const sorted = [...nodes].sort((a, b) => {
+      const ta = a.created ? new Date(a.created).getTime() : 0;
+      const tb = b.created ? new Date(b.created).getTime() : 0;
+      return ta - tb;
+    });
+
+    for (const node of sorted) {
+      graph.addPharosNode({ node, parentId: node.parent_id || 'me' });
+    }
+    for (const claim of claims) {
+      graph.addPharosClaim(claim);
+    }
+  } catch (err) {
+    console.warn('[hydrate] failed', err);
+  }
+}
+
 loadIdentity();
+hydrateState();
 startSSE();

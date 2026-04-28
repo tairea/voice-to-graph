@@ -146,6 +146,99 @@ export function incrementExpression(nodeId) {
   }
 }
 
+export function removeNode(id) {
+  if (!id || id === 'me' || !nodes.has(id)) return { removed: [], removedClaims: [] };
+
+  // Compute id's ancestry BEFORE we mutate the tree so we know which public
+  // spaces transitively contain it. (A space rooted at any ancestor of id
+  // includes the subtree we are about to remove.)
+  const ancestry = new Set();
+  {
+    let cur = id;
+    const seen = new Set();
+    while (cur && cur !== 'me' && !seen.has(cur) && nodes.has(cur)) {
+      seen.add(cur);
+      ancestry.add(cur);
+      cur = nodes.get(cur).parent_id;
+    }
+  }
+
+  // Categorise public spaces affected by this removal
+  const spacesToStop = [];      // root being removed → entire space dies
+  const spacesToTombstone = []; // subtree partially removed → null individual ids
+  for (const space of publicSpaces.values()) {
+    if (space.root_node_id === id) {
+      spacesToStop.push(space.id);
+    } else if (space.root_node_id === 'me' || ancestry.has(space.root_node_id)) {
+      spacesToTombstone.push(space.id);
+    }
+  }
+
+  const removed = [];
+  const removedClaims = [];
+
+  function visit(nodeId) {
+    if (!nodes.has(nodeId)) return;
+    const childIds = [];
+    for (const [cid, child] of nodes) {
+      if (child.parent_id === nodeId) childIds.push(cid);
+    }
+    for (const cid of childIds) visit(cid);
+
+    for (let i = claims.length - 1; i >= 0; i--) {
+      if (claims[i].subject_node === nodeId || claims[i].object_node === nodeId) {
+        const cid = claims[i].id;
+        try { PATHS.claims(did).get(cid).put(null); } catch {}
+        removedClaims.push(cid);
+        claims.splice(i, 1);
+      }
+    }
+    nodes.delete(nodeId);
+    codeMap.delete(nodeId);
+    try { PATHS.nodes(did).get(nodeId).put(null); } catch {}
+    // Avatar-linked shares are a flat namespace under our DID; null
+    // best-effort regardless of whether this node was actually linked.
+    try { $u(did, 'shared>nodes').get(nodeId).put(null); } catch {}
+    removed.push(nodeId);
+  }
+
+  visit(id);
+
+  // Tombstone the removed ids inside any public space that still exists
+  for (const spaceId of spacesToTombstone) {
+    for (const rid of removed) {
+      try { PATHS.publicNodes(spaceId).get(rid).put(null); } catch {}
+    }
+    for (const cid of removedClaims) {
+      try { PATHS.publicClaims(spaceId).get(cid).put(null); } catch {}
+    }
+  }
+  for (const cid of removedClaims) {
+    try { $u(did, 'shared>claims').get(cid).put(null); } catch {}
+  }
+
+  // Spaces whose root we just deleted are gone entirely
+  for (const spaceId of spacesToStop) {
+    stopPublic(spaceId);
+  }
+
+  persist();
+  if (spacesToStop.length || spacesToTombstone.length) {
+    console.log(`[pharos-store] removeNode ${id}: ${removed.length} nodes / ${removedClaims.length} claims; tombstoned in ${spacesToTombstone.length} space(s); stopped ${spacesToStop.length} space(s)`);
+  }
+  return { removed, removedClaims };
+}
+
+export function moveNode(id, newParentId) {
+  const node = nodes.get(id);
+  if (!node) return null;
+  const updated = { ...node, parent_id: newParentId || 'me', updated: new Date().toISOString() };
+  nodes.set(id, updated);
+  persist();
+  mirrorNode(updated);
+  return updated;
+}
+
 // ─── Claim operations ────────────────────────────────────────────────────────
 
 export function addClaim(claim) {
@@ -234,6 +327,14 @@ export function getIdentity() {
 export function collectSubtree(rootId) {
   const subtreeNodes = new Map();
   const subtreeClaims = new Map();
+
+  // 'me' is the avatar pseudo-root: treat it as the whole graph
+  if (rootId === 'me') {
+    for (const [nid, n] of nodes) subtreeNodes.set(nid, n);
+    for (const c of claims) subtreeClaims.set(c.id, c);
+    return { nodes: subtreeNodes, claims: subtreeClaims };
+  }
+
   const queue = [rootId];
   while (queue.length) {
     const id = queue.shift();
@@ -255,9 +356,16 @@ export function collectSubtree(rootId) {
 
 // ─── Public sharing ──────────────────────────────────────────────────────────
 
+function shareRootDescriptor(rootNodeId) {
+  if (rootNodeId === 'me') {
+    return { id: 'me', canonical_name: identity.name ? `${identity.name}'s graph` : 'graph' };
+  }
+  return nodes.get(rootNodeId);
+}
+
 export function makePublic(rootNodeId) {
   const subtree = collectSubtree(rootNodeId);
-  const rootNode = nodes.get(rootNodeId);
+  const rootNode = shareRootDescriptor(rootNodeId);
   if (!rootNode) throw new Error(`node ${rootNodeId} not found`);
   const spaceId = `public-${rootNodeId}`;
   const meta = {
@@ -302,7 +410,7 @@ export function getPublicSpaces() {
 export async function shareWithSpecific(rootNodeId, recipientDID) {
   if (!recipientDID) throw new Error('recipientDID required');
   const subtree = collectSubtree(rootNodeId);
-  const rootNode = nodes.get(rootNodeId);
+  const rootNode = shareRootDescriptor(rootNodeId);
   if (!rootNode) throw new Error(`node ${rootNodeId} not found`);
 
   const spaceId = `inbox-${rootNodeId}-${Date.now()}`;

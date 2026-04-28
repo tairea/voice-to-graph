@@ -119,6 +119,17 @@ app.delete('/ingest/share/:spaceId', (req, res) => {
   }
 });
 
+// ─── /ingest/node/:id — delete a node and its subtree ────────────────────────
+
+app.delete('/ingest/node/:id', (req, res) => {
+  try {
+    const result = store.removeNode(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: String(err.message || err) });
+  }
+});
+
 // ─── /ingest/peers — peer management ─────────────────────────────────────────
 
 app.get('/ingest/peers', (_req, res) => {

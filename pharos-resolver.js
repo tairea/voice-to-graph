@@ -64,11 +64,21 @@ export async function resolve(transcript, assistantPrior, contextId) {
     const newParentNode = op.new_parent && op.new_parent !== 'me'
       ? store.resolveRef(op.new_parent)
       : null;
+    const resolvedNewParentId = newParentNode ? newParentNode.id : (op.new_parent === 'me' ? 'me' : '');
+
+    // Actually mutate the store — without this, voice deletes/moves only
+    // edit the browser graph and reappear on reload.
+    if (op.type === 'remove') {
+      store.removeNode(targetNode.id);
+    } else if (op.type === 'move' && resolvedNewParentId) {
+      store.moveNode(targetNode.id, resolvedNewParentId);
+    }
+
     resolvedOps.push({
       type: op.type,
       target_id: targetNode.id,
       target_code: targetNode.code || op.target,
-      new_parent_id: newParentNode ? newParentNode.id : (op.new_parent === 'me' ? 'me' : ''),
+      new_parent_id: resolvedNewParentId,
       new_parent_code: newParentNode ? (newParentNode.code || op.new_parent) : op.new_parent
     });
   }
