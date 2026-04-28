@@ -28,8 +28,20 @@ const peersPanel = document.getElementById('peers-panel');
 const peersList = document.getElementById('peers-list');
 const peersDidBadge = document.getElementById('peers-did');
 const peerAddBtn = document.getElementById('peer-add-btn');
+const processingPill = document.getElementById('processing-pill');
 
 let live = false;
+let processingCount = 0;
+
+function beginProcessing() {
+  processingCount++;
+  if (processingCount === 1) processingPill?.classList.add('is-active');
+}
+
+function endProcessing() {
+  processingCount = Math.max(0, processingCount - 1);
+  if (processingCount === 0) processingPill?.classList.remove('is-active');
+}
 
 function getSelectedVoice() {
   return localStorage.getItem('pharos-voice') || 'alloy';
@@ -119,6 +131,7 @@ avatarInput.addEventListener('change', async () => {
 });
 
 async function handleTranscript({ transcript, assistantPrior }) {
+  beginProcessing();
   try {
     const res = await fetch('ingest', {
       method: 'POST',
@@ -161,6 +174,8 @@ async function handleTranscript({ transcript, assistantPrior }) {
     }
   } catch (err) {
     console.error('[ingest] error', err);
+  } finally {
+    endProcessing();
   }
 }
 
@@ -207,6 +222,7 @@ function showToast(msg, type = '') {
 }
 
 async function ingestMdFile(text, filename) {
+  beginProcessing();
   try {
     const res = await fetch('ingest', {
       method: 'POST',
@@ -252,6 +268,8 @@ async function ingestMdFile(text, filename) {
   } catch (err) {
     console.error('[md-ingest] error', err);
     showToast('Failed to parse ' + filename, 'error');
+  } finally {
+    endProcessing();
   }
 }
 
@@ -264,8 +282,11 @@ function handleMdFile(file) {
   dropZone.classList.add('processing');
   const reader = new FileReader();
   reader.onload = async e => {
-    dropZone.classList.remove('processing');
-    await ingestMdFile(e.target.result, file.name);
+    try {
+      await ingestMdFile(e.target.result, file.name);
+    } finally {
+      dropZone.classList.remove('processing');
+    }
   };
   reader.onerror = () => {
     dropZone.classList.remove('processing');
