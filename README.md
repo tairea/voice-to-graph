@@ -176,8 +176,9 @@ git clone https://github.com/tairea/voice-to-graph.git
 cd voice-to-graph
 npm install
 
-echo OPENAI_API_KEY=sk-...    >  .env
-echo ANTHROPIC_API_KEY=sk-... >> .env
+cp .env.example .env
+# then edit .env and fill in your OPENAI_API_KEY and ANTHROPIC_API_KEY
+
 npm start
 ```
 
