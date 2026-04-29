@@ -29,9 +29,15 @@ const peersList = document.getElementById('peers-list');
 const peersDidBadge = document.getElementById('peers-did');
 const peerAddBtn = document.getElementById('peer-add-btn');
 const processingPill = document.getElementById('processing-pill');
+const inputModeBtn = document.getElementById('input-mode-btn');
+const textInputForm = document.getElementById('text-input-form');
+const textInput = document.getElementById('text-input');
+const modeIconKeyboard = inputModeBtn?.querySelector('.mode-icon-keyboard');
+const modeIconMic = inputModeBtn?.querySelector('.mode-icon-mic');
 
 let live = false;
 let processingCount = 0;
+let inputMode = 'voice';
 
 function beginProcessing() {
   processingCount++;
@@ -202,6 +208,55 @@ micBtn.addEventListener('click', async () => {
     micBtn.disabled = false;
   }
 });
+
+// ─── Input mode toggle (voice ↔ text) ────────────────────────────────────────
+
+function setInputMode(mode) {
+  if (mode !== 'voice' && mode !== 'text') return;
+  if (mode === inputMode) return;
+  inputMode = mode;
+
+  if (mode === 'text') {
+    if (live) {
+      realtime.stop();
+      live = false;
+      micBtn.dataset.live = 'false';
+      setStatus('ready');
+    }
+    micBtn.hidden = true;
+    textInputForm.hidden = false;
+    inputModeBtn.dataset.mode = 'text';
+    inputModeBtn.setAttribute('aria-label', 'Switch to voice input');
+    inputModeBtn.title = 'Switch to voice input';
+    if (modeIconKeyboard) modeIconKeyboard.style.display = 'none';
+    if (modeIconMic) modeIconMic.style.display = '';
+    textInput.focus();
+  } else {
+    micBtn.hidden = false;
+    textInputForm.hidden = true;
+    inputModeBtn.dataset.mode = 'voice';
+    inputModeBtn.setAttribute('aria-label', 'Switch to text input');
+    inputModeBtn.title = 'Switch to text input';
+    if (modeIconKeyboard) modeIconKeyboard.style.display = '';
+    if (modeIconMic) modeIconMic.style.display = 'none';
+  }
+
+  localStorage.setItem('pharos-input-mode', mode);
+}
+
+inputModeBtn?.addEventListener('click', () => {
+  setInputMode(inputMode === 'voice' ? 'text' : 'voice');
+});
+
+textInputForm?.addEventListener('submit', e => {
+  e.preventDefault();
+  const text = textInput.value.trim();
+  if (!text) return;
+  textInput.value = '';
+  handleTranscript({ transcript: text, assistantPrior: '' });
+});
+
+if (localStorage.getItem('pharos-input-mode') === 'text') setInputMode('text');
 
 function getSessionId() {
   if (!sessionStorage.pharosSessionId) {
