@@ -406,7 +406,8 @@ html, body {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
 }
 
-#text-input-form[hidden] { display: none; }
+#text-input-form[hidden],
+#mic-btn[hidden] { display: none; }
 
 #text-input {
   flex: 1;
